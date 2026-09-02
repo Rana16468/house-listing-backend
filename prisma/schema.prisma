@@ -1,0 +1,228 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+
+enum Role {
+  SUPER_ADMIN
+  LANDLORD
+  TENANT
+}
+enum Status {
+  ACTIVE
+  BLOCKED
+}
+enum PlanTier {
+  BASIC
+  STANDARD
+  PRO
+}
+enum UnitType {
+  FLAT
+  ROOM
+  SEAT
+  OFFICE
+}
+enum UnitStatus {
+  VACANT
+  OCCUPIED
+  MAINTENANCE
+}
+enum InvoiceStatus {
+  UNPAID
+  PENDING
+  PAID
+  REJECTED
+}
+enum TicketStatus {
+  PENDING
+  IN_PROGRES
+   RESOLVED
+}
+enum PaymentMethod {
+  BKASH
+  NAGAD
+  BANK
+}
+
+model User {
+  id            String            @id @default(uuid())
+  name          String
+  phone         String            @unique
+  email         String?           @unique
+  status        Status            @default(ACTIVE)
+  role          Role              @default(LANDLORD)
+  os            String?           // "android", "ios"
+  browser      String?           // "chrome", "firefox", "safari"
+  device      String?           // "mobile", "desktop"
+  ipAddress String?           // Last Login IP Address
+  isOnline     Boolean           @default(true)
+  subscription  UserSubscription?
+  properties    Property[] 
+  
+  isDeleted     Boolean           @default(false)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  @@map("users")
+  @@index([phone, email, status, os, browser, device])
+  @@index([role])
+
+  @@index([createdAt])
+  @@index([ipAddress])
+  @@index([isDeleted, role])
+}
+model SubscriptionPlan {
+  id           String             @id @default(uuid())
+  tier         PlanTier           @unique
+  name         String             // "Basic", "Standard", "Pro"
+  maxUnits     Int
+  UnitDEtails  String
+  Features   String
+  priceMonthly Float
+  isDeleted     Boolean           @default(false)
+  users        UserSubscription[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  @@map("subscription_plans")
+  @@index([tier, isDeleted, createdAt,name, priceMonthly])
+  
+
+}
+model UserSubscription {
+  id        String           @id @default(uuid())
+  userId    String           @unique
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId    String
+  plan      SubscriptionPlan @relation(fields: [planId], references: [id])
+  startDate DateTime         @default(now())
+  endDate   DateTime
+  isActive  Boolean          @default(true)
+  isDeleted  Boolean          @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  @@map("user_subscriptions")
+  @@index([userId, planId, isActive, isDeleted, createdAt])
+}
+model Property {
+  id          String   @id @default(uuid())
+  landlordId  String
+  landlord    User     @relation(fields: [landlordId], references: [id], onDelete: Cascade)
+  title       String
+  address     String
+  units       Unit[]
+  isDeleted   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@map("properties")
+  @@index([landlordId, isDeleted, createdAt, address])
+}
+model Unit {
+  id           String      @id @default(uuid())
+  propertyId   String
+  property     Property    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  parentUnitId String?     // Tree Hierarchy (Flat -> Room -> Seat)
+  parentUnit   Unit?       @relation("UnitSubUnits", fields: [parentUnitId], references: [id])
+  subUnits     Unit[]      @relation("UnitSubUnits")
+  name         String      // e.g. "Flat A-1", "Room-101", "Seat-A"
+  type         UnitType
+  baseRent     Float
+  status       UnitStatus  @default(VACANT)
+  tenants      Tenant[]
+  isDeleted    Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  @@map("units")
+  @@index([propertyId, parentUnitId, type, status, isDeleted, createdAt])
+}
+
+model Tenant {
+  id              String      @id @default(uuid())
+  name            String
+  phone           String
+  email           String?
+  nidNumber       String?
+  photoUrl        String?     // Tenant Photo
+  nidDocUrl       String?     // NID Copy URL
+  agreementDocUrl String?     // Agreement File URL
+  emergencyContact String?    // Emergency Phone
+  unitId          String
+  unit            Unit        @relation(fields: [unitId], references: [id])
+  moveInDate      DateTime
+  invoices        Invoice[]
+  complaints      Complaint[]
+  isDeleted       Boolean     @default(false)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  @@map("tenants")
+  @@index([unitId, isDeleted, createdAt, moveInDate])
+}
+model MeterReading {
+  id            String   @id @default(uuid())
+  unitId        String
+  previousRead  Float
+  currentRead   Float
+  unitConsumed  Float
+  chargePerUnit Float
+  totalCharge   Float
+  isDeleted     Boolean  @default(false)
+  monthYear     String   // "YYYY-MM"
+  createdAt     DateTime @default(now())
+   updatedAt       DateTime    @updatedAt
+   @@map("meter_readings")
+   @@index([unitId, monthYear, isDeleted, createdAt])
+}
+model Invoice {
+  id            String        @id @default(uuid())
+  tenantId      String
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payToken      String        @unique @default(uuid()) // Dynamic Public Link Token
+  monthYear     String        // "YYYY-MM"
+  baseRent      Float
+  electricBill  Float         @default(0.0)
+  waterBill     Float         @default(0.0)
+  gasBill       Float         @default(0.0)
+  otherCharge   Float         @default(0.0)
+  totalAmount   Float
+  status        InvoiceStatus @default(UNPAID)
+  payment       PaymentTransaction?
+  isDeleted     Boolean       @default(false)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  @@map("invoices")
+  @@index([tenantId, monthYear, status, isDeleted, createdAt])
+}
+model PaymentTransaction {
+  id            String   @id @default(uuid())
+  invoiceId     String   @unique
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  paymentMethod PaymentMethod   // "bKash", "Nagad", "Bank"
+  senderPhone   String
+  trxId         String   @unique
+  submittedAt   DateTime @default(now())
+  verifiedAt    DateTime
+  isDeleted     Boolean     @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  @@map("payment_transactions")
+  @@index([invoiceId, trxId, paymentMethod, isDeleted, createdAt])
+}
+
+model Complaint {
+  id          String       @id @default(uuid())
+  tenantId    String
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  title       String       // e.g. "Fan Repairing", "Plumbing issue"
+  description String
+  status      TicketStatus @default(PENDING)
+  isDeleted   Boolean       @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  @@map("complaints")
+  @@index([tenantId, status, isDeleted, createdAt])
+}

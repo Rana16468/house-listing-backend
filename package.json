@@ -1,0 +1,54 @@
+{
+  "name": "ts-express-kit",
+  "version": "1.1.4",
+  "description": "A TypeScript starter kit for building Express applications with best practices.",
+  "main": "index.js",
+  "bin": {
+    "ts-express-kit": "./dist/bin/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint src --ignore-path .eslintignore --ext .ts",
+    "lint:fix": "npx eslint src --fix",
+    "prettier": "prettier --ignore-path .gitignore --write \"./src/**/*.+(js|ts|json)\"",
+    "prettier:fix": "npx prettier --write src",
+    "dev": "ts-node-dev --respawn --transpile-only ./src/server.ts",
+    "prod": "node ./dist/server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "typescript",
+    "express",
+    "node",
+    "ts-express-kit"
+  ],
+  "author": "Nasim",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nazmulhasannasim333/ts-express-kit.git"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^6.19.3",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "http-status": "^2.1.0",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/node": "^26.4.0",
+    "@types/pg": "^8.23.1",
+    "@typescript-eslint/eslint-plugin": "^8.39.0",
+    "@typescript-eslint/parser": "^8.39.0",
+    "eslint": "^9.32.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.6.2",
+    "prisma": "^6.19.3",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.9.2"
+  }
+}
