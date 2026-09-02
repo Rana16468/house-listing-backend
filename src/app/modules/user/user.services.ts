@@ -3,10 +3,13 @@ import prisma from "../../shared/prisma";
 import { TJwtPayload, TUser } from "./user.interface";
 import { jwtHelpers } from "../../helper/jwtHelpers";
 import config from "../../config";
-
+import fs from 'fs';
 import httpStatus from "http-status";
 import AppError from "../../errors/AppError";
 import bcrypt from "bcrypt";
+import catchError from "../../errors/catchError";
+import { sendFileToCloudinary } from "../../utils/Cloudinary/sendFileToCloudinary";
+import deleteFileFromCloudinary from "../../utils/Cloudinary/deleteFileFromCloudinary";
 
 const createUserIntoDb = async (payload: TUser) => {
 
@@ -195,9 +198,84 @@ const createAccountIntoDb = async (payload: TUser) => {
   };
 };
 
+const changeProfilePictureIntoDB = async (
+  userId: string,
+  payload: Partial<TUser>
+) => {
+  try {
+    
+    const existingUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        photo: true,
+        isDeleted: true,
+        status: true,
+      },
+    });
+
+    if (!existingUser) {
+      throw new AppError(httpStatus.NOT_FOUND, 'User not found.');
+    }
+
+    if (existingUser.isDeleted) {
+      throw new AppError(httpStatus.FORBIDDEN, 'This account has been deleted.');
+    }
+
+    const updateData: Record<string, any> = { ...payload };
+
+    if (payload.photo) {
+      const localFilePath = payload.photo;
+
+      try {
+        const fileName = `profile-${userId}-${Date.now()}`;
+        const cloudinaryResponse = await sendFileToCloudinary(fileName, localFilePath);
+
+        if (cloudinaryResponse?.secure_url) {
+    
+          if (existingUser.photo && existingUser.photo.includes('cloudinary.com')) {
+            await deleteFileFromCloudinary(existingUser.photo);
+          }
+          updateData.photo = cloudinaryResponse.secure_url;
+        }
+      } catch (uploadError) {
+        if (fs.existsSync(localFilePath)) {
+          fs.unlinkSync(localFilePath);
+        }
+        throw new AppError(
+          httpStatus.INTERNAL_SERVER_ERROR,
+          'Failed to upload image to Cloudinary'
+        );
+      }
+    }
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        photo: true,
+        role: true,
+        status: true,
+        updatedAt: true,
+      },
+    });
+
+    return updatedUser && {
+        status:true ,
+        message: 'Profile picture updated successfully',
+    };
+  } catch (error) {
+    throw catchError(error, 'Failed to update profile');
+  }
+};
+
 const UserService = {
   createUserIntoDb,
-  createAccountIntoDb
+  createAccountIntoDb,
+  changeProfilePictureIntoDB
 };
 
 export default UserService;

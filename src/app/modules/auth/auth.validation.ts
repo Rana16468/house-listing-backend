@@ -25,8 +25,16 @@ const loginZodSchema = z.object({
 // Infer TypeScript Type directly from Zod Schema
 export type TAuthInput = z.infer<typeof loginZodSchema>['body'];
 
+const changePasswordZodSchema = z.object({
+  body: z.object({
+    oldPassword: z.string({error: 'Old password is required'}).min(6, 'Old password must be at least 6 characters long'),
+    newPassword: z.string({error: 'New password is required'}).min(6, 'New password must be at least 6 characters long'),
+  }),
+});
+
  const AuthValidation = {
   loginZodSchema,
+  changePasswordZodSchema
 };
 
 export default AuthValidation;

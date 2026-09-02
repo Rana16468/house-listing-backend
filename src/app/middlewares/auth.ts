@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 import httpStatus from 'http-status';
 import jwt, { JwtPayload } from 'jsonwebtoken';
-import { Role } from '@prisma/client';
+import { Role, Status } from '@prisma/client';
 import config from '../config';
 import { prisma } from '../../prisma';
 import catchAsync from '../utils/asyncCatch';
@@ -19,8 +19,8 @@ export interface AuthUser {
  const auth = (...requiredRoles: Role[]) =>
   catchAsync(async (req: Request, _res: Response, next: NextFunction) => {
    
-    const header = req.headers.authorization;
-    const token = header?.startsWith('Bearer ') ? header.slice(7) : undefined;
+    const token = req.headers.authorization;
+    
 
     if (!token) {
       throw  new AppError(httpStatus.UNAUTHORIZED, 'Access token missing');
@@ -37,7 +37,7 @@ export interface AuthUser {
 
     // 3. Database query
     const user = await prisma.user.findUnique({
-      where: { id: String(decoded.id) },
+      where: { id: String(decoded.id), isDeleted: false,status: Status.ACTIVE, isVerify: true },
       select: { id: true, role: true, phone: true },
     });
 

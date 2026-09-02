@@ -10,6 +10,7 @@ export interface TUser {
     browser?: string;
     device?: string;
     ipAddress?: string;
+    photo?: string;
     isOnline?: boolean;
     isDeleted?: boolean;
 

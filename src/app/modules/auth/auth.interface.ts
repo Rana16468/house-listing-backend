@@ -7,3 +7,8 @@ export  interface  TAuth {
     device?: string;
     ipAddress?: string;
 }
+
+export interface TChanagePassword {
+    oldPassword: string;
+    newPassword: string;
+}

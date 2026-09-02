@@ -85,18 +85,12 @@ const updateUserZodSchema = z.object({
   body: z.object({
     name: z.string().min(1).optional(),
     phone: z.string().min(10).optional(),
-    password: z.string().min(6).optional(),
-    email: z.string().email().optional().or(z.literal('')),
-    status: z.nativeEnum(Status).optional(),
-    role: z.nativeEnum(Role).optional(),
     os: z.string().optional(),
     browser: z.string().optional(),
     device: z.string().optional(),
-    ipAddress: z.string().optional(),
-    isOnline: z.boolean().optional(),
-    isVerify: z.boolean().optional(),
+    
     photo: z.string().optional(),
-    isDeleted: z.boolean().optional(),
+    
   }),
 });
 

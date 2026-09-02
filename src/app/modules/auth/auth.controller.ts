@@ -24,7 +24,29 @@ const loginAdminUser: RequestHandler = catchAsync(async (req, res) => {
   });
 });
 
+const changePassword: RequestHandler = catchAsync(async (req, res) => {
+  const result = await AuthService.changePasswordIntoDB(req.body, req.user.id);
+  sendResponse(res, {
+    success: true,
+    statusCode: httpStatus.OK,
+    message: "Password changed successfully",
+    data: result,
+  });
+});
+
+const findBySpecificUserProfile: RequestHandler = catchAsync(async (req, res) => {
+  const result = await AuthService.findBySpecificUserProfileIntoDb(req.user.id);
+  sendResponse(res, {
+    success: true,
+    statusCode: httpStatus.OK,
+    message: "User profile fetched successfully",
+    data: result,
+  });
+});
+
 const AuthController = {
   loginAdminUser,
+  changePassword,
+  findBySpecificUserProfile
 };
 export default AuthController;
