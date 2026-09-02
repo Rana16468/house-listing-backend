@@ -10,7 +10,7 @@ datasource db {
 
 
 enum Role {
-  SUPER_ADMIN
+  ADMIN
   LANDLORD
   TENANT
 }
@@ -55,6 +55,7 @@ model User {
   id            String            @id @default(uuid())
   name          String
   phone         String            @unique
+  password      String? 
   email         String?           @unique
   status        Status            @default(ACTIVE)
   role          Role              @default(LANDLORD)
@@ -63,17 +64,16 @@ model User {
   device      String?           // "mobile", "desktop"
   ipAddress String?           // Last Login IP Address
   isOnline     Boolean           @default(true)
+  isVerify     Boolean           @default(false)
   subscription  UserSubscription?
   properties    Property[] 
-  
+  photo      String?           // User Profile Photo
   isDeleted     Boolean           @default(false)
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
   @@map("users")
-  @@index([phone, email, status, os, browser, device])
+  @@index([phone, email, status, os, browser, device, isDeleted, isVerify, createdAt])
   @@index([role])
-
-  @@index([createdAt])
   @@index([ipAddress])
   @@index([isDeleted, role])
 }
