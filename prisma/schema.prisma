@@ -78,21 +78,31 @@ model User {
   @@index([isDeleted, role])
 }
 model SubscriptionPlan {
-  id           String             @id @default(uuid())
-  tier         PlanTier           @unique
-  name         String             // "Basic", "Standard", "Pro"
-  maxUnits     Int
-  UnitDEtails  String
-  Features   String
-  priceMonthly Float
-  isDeleted     Boolean           @default(false)
-  users        UserSubscription[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  @@map("subscription_plans")
-  @@index([tier, isDeleted, createdAt,name, priceMonthly])
+  id               String             @id @default(uuid())
+  tier             PlanTier           @unique
   
+  nameEn           String             
+  nameBn           String             
+  
+  flat Int?
+  maxUnits         Int
+ 
+  
+  unitDetailsEn    String             
+  unitDetailsBn    String            
+  
+  // Features in both languages
+  featuresEn       String[]          
+  featuresBn       String[]           
+  
+  priceMonthly     Float
+  isDeleted        Boolean            @default(false)
+  users            UserSubscription[]
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
 
+  @@map("subscription_plans")
+  @@index([tier, isDeleted, createdAt, priceMonthly])
 }
 model UserSubscription {
   id        String           @id @default(uuid())
