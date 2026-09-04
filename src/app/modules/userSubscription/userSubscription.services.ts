@@ -26,6 +26,8 @@ const generateInvoiceNo = async (): Promise<string> => {
     select: {
       invoiceNo: true,
     },
+  }).catch(error=>{
+    throw new AppError(status.NOT_EXTENDED, 'issues by the invoce generate section', error)
   });
 
   if (lastSubscription && lastSubscription.invoiceNo) {
@@ -88,6 +90,8 @@ const createUserSubscriptionIntoDB = async (
       await prisma.userSubscription.updateMany({
         where: { userId, isActive: true },
         data: { isActive: false },
+      }).catch(error=>{
+        throw new AppError(status.NOT_EXTENDED, 'iisues by the user subscription section', error)
       });
 
       const invoiceNo = await generateInvoiceNo();
@@ -103,7 +107,12 @@ const createUserSubscriptionIntoDB = async (
           paymentMethod: payload.paymentMethod || "FREE_TRIAL",
           startDate: today,
           endDate: freeTrialEndDate,
-          isActive: true, // 👈 ফ্রি প্ল্যানে অটোমেটিক True
+          isActive: true, // 👈 ফ্রি প্ল্যানে অটোমেটিক True,
+          isPaymentVerify: true,
+          paymentStatus:PaymentStatus.PAID,
+
+
+          
         },
         include: { plan: true },
       });
@@ -163,6 +172,8 @@ const createUserSubscriptionIntoDB = async (
         userId,
         planId: payload.planId,
       },
+    }).catch(error=>{
+        throw new AppError(status.NOT_EXTENDED, 'issues by the existing sma paln subscription section', error)
     });
 
     // --- যদি ইউজার আগে এই প্ল্যান কিনে থাকে -> UPDATE হবে ---
@@ -277,14 +288,14 @@ const myActiveSubscriptionIntoDb = async (userId: string) => {
         isPaymentVerify:true,
         paymentStatus:true
       }
+    }).catch(error=>{
+        throw new AppError(
+        status.NOT_FOUND,
+        "No active subscription found for this user", error
+      );
     });
 
-    if (!activeSubscription) {
-      throw new AppError(
-        status.NOT_FOUND,
-        "No active subscription found for this user"
-      );
-    }
+    
 
 
 
@@ -297,10 +308,38 @@ const myActiveSubscriptionIntoDb = async (userId: string) => {
   }
 };
 
+const deleteUserSubscriptionIntoDb=async(id:string)=>{
+
+     try{
+
+        const isExistAvailableSubscription=await prisma.userSubscription.findFirst({where:{id},select:{
+            id:true
+        }});
+        if(!isExistAvailableSubscription){
+            return {
+                status: false,
+                message:"this subscription not exist"
+            }
+        };
+        await prisma.userSubscription.delete({
+            where:{
+                id
+            }
+        }).catch((error)=>{
+            throw new AppError(status.SERVICE_UNAVAILABLE, 'delete subscription server section some issues ', error);
+        })
+
+     }
+     catch (error) {
+    throw catchError(error, "Failed to fetch user active subscription");
+  }
+}
+
 const UserSubscriptionService = {
   createUserSubscriptionIntoDB,
   myActiveSubscriptionIntoDb,
-  myAllSubIntoDb
+  myAllSubIntoDb,
+  deleteUserSubscriptionIntoDb
 };
 
 export default UserSubscriptionService;

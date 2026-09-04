@@ -45,6 +45,17 @@ const updateSubscriptionPlan:RequestHandler=catchAsync(async(req , res)=>{
     message: 'Subscription Update successfully',
     data: result,
   });
+});
+
+const deleteSubscription:RequestHandler=catchAsync(async(req , res)=>{
+
+      const result=await SubscriptionPlanService.deleteSubscriptionIntoDb(req.params.subscriptionId as string);
+      sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: result.message,
+    data: result,
+  });
 })
 
 
@@ -55,6 +66,7 @@ const SubscriptionPlanController={
     getAllSubscriptionPlans,
 
     getSingleSubscriptionPlan,
-    updateSubscriptionPlan
+    updateSubscriptionPlan,
+    deleteSubscription
 }
 export default SubscriptionPlanController;

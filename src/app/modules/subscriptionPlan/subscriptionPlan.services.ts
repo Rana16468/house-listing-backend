@@ -1,8 +1,9 @@
+import { prisma } from './../../../prisma';
 import { SubscriptionPlan } from "@prisma/client";
 import status from "http-status";
 import AppError from "../../errors/AppError";
 import catchError from "../../errors/catchError";
-import { prisma } from "../../../prisma";
+
 
 const createSubscriptionPlanIntoDB = async (
   payload: SubscriptionPlan
@@ -147,11 +148,51 @@ const updateSubscriptionPlanIntoDB = async (
   }
 };
 
+const deleteSubscriptionIntoDb=async(subscriptionId: string):Promise<{
+    status:number,
+    message: string 
+}>=>{
+
+    try{
+
+         await prisma.subscriptionPlan.findFirstOrThrow({
+          where:{id:subscriptionId}
+         }).catch(error=>{
+            throw new AppError(status.NOT_FOUND, 'this subscription is not founded', error);
+         });
+         // delete all subscriber user
+         await prisma.userSubscription.deleteMany({where:{
+          planId:subscriptionId
+         }}).catch(error=>{
+            throw new AppError(status.NOT_EXTENDED, 
+                'some issues  by the user subscription collection section', error);
+
+         });
+        // delete subscription 
+         await prisma.subscriptionPlan.delete({where:{
+            id:subscriptionId
+         }}).catch(error=>{
+            throw new AppError(status.NOT_EXTENDED, 
+                'issues by the delete subscription section', error);
+         });
+
+         return {
+            status: status.OK,
+            message:"Successfully delete Subscription"
+         }
+
+    }
+    catch (error) {
+    throw catchError(error, "Failed to update subscription plan");
+  }
+}
+
 const SubscriptionPlanService = {
   createSubscriptionPlanIntoDB,
   getAllSubscriptionPlansFromDB,
   getSingleSubscriptionPlanFromDB,
-  updateSubscriptionPlanIntoDB
+  updateSubscriptionPlanIntoDB,
+  deleteSubscriptionIntoDb
 };
 
 export default SubscriptionPlanService;

@@ -32,6 +32,11 @@ router.patch("/update-subscription/:id",
     SubscriptionPlanController.updateSubscriptionPlan
 )
 
+router.delete("/delete_subscription/:subscriptionId",
+    auth(Role.ADMIN),
+    SubscriptionPlanController.deleteSubscription
+)
+
 
 
 export const SubscriptionPlanRoutes = router;

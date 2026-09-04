@@ -19,6 +19,12 @@ router.get("/my-all-sub",
 router.get("/my-latest-active-sub",
     auth(Role.LANDLORD),
     UserSubscriptionController.myActiveSubscription
+);
+
+router.get('/delete-user-subscription/:id', 
+    auth(Role.ADMIN),
+    UserSubscriptionController.deleteUserSubscription
+
 )
 
 
