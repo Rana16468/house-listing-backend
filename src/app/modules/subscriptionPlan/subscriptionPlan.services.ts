@@ -62,18 +62,7 @@ const getSingleSubscriptionPlanFromDB = async (id: string, lang: string = 'en') 
     where: { id, isDeleted: false },
   });
 
-  return {
-    id: plan.id,
-    tier: plan.tier,
-    flat: plan.flat, 
-    maxUnits: plan.maxUnits,
-    priceMonthly: plan.priceMonthly,
-    name: lang === 'bn' ? plan.nameBn : plan.nameEn,
-    unitDetails: lang === 'bn' ? plan.unitDetailsBn : plan.unitDetailsEn,
-    features: lang === 'bn' ? plan.featuresBn : plan.featuresEn,
-    createdAt: plan.createdAt,
-    updatedAt: plan.updatedAt,
-  };
+  return plan
 
  }
  catch(error){
@@ -81,10 +70,88 @@ const getSingleSubscriptionPlanFromDB = async (id: string, lang: string = 'en') 
  }
 };
 
+const updateSubscriptionPlanIntoDB = async (
+  id: string,
+  payload: Partial<SubscriptionPlan & {
+  addFeaturesEn?: string[];
+  addFeaturesBn?: string[];
+  removeFeaturesEn?: string[];
+  removeFeaturesBn?: string[];
+}>
+): Promise<{status:boolean, message:string}> => {
+  try {
+    const existingPlan = await prisma.subscriptionPlan.findFirst({
+      where: { id, isDeleted: false },
+    });
+
+    if (!existingPlan) {
+      throw new AppError(status.NOT_FOUND, "Subscription plan not found");
+    }
+
+    // Extract custom operation fields from payload
+    const {
+      addFeaturesEn,
+      addFeaturesBn,
+      removeFeaturesEn,
+      removeFeaturesBn,
+      featuresEn,
+      featuresBn,
+      ...otherFields
+    } = payload;
+
+    
+    let updatedFeaturesEn = featuresEn !== undefined ? featuresEn : [...existingPlan.featuresEn];
+
+    // Add new English features (Duplicate avoid using Set)
+    if (addFeaturesEn && addFeaturesEn.length > 0) {
+      updatedFeaturesEn = Array.from(new Set([...updatedFeaturesEn, ...addFeaturesEn]));
+    }
+    if (removeFeaturesEn && removeFeaturesEn.length > 0) {
+      updatedFeaturesEn = updatedFeaturesEn.filter(
+        (feature) => !removeFeaturesEn.includes(feature)
+      );
+    }
+
+    // --- Process Bengali Features ---
+    // Direct array replace override or existing array baseline
+    let updatedFeaturesBn = featuresBn !== undefined ? featuresBn : [...existingPlan.featuresBn];
+
+    // Add new Bengali features
+    if (addFeaturesBn && addFeaturesBn.length > 0) {
+      updatedFeaturesBn = Array.from(new Set([...updatedFeaturesBn, ...addFeaturesBn]));
+    }
+
+    // Remove specific Bengali features
+    if (removeFeaturesBn && removeFeaturesBn.length > 0) {
+      updatedFeaturesBn = updatedFeaturesBn.filter(
+        (feature) => !removeFeaturesBn.includes(feature)
+      );
+    }
+
+    // 2. Perform Database Update
+    const result = await prisma.subscriptionPlan.update({
+      where: { id },
+      data: {
+        ...otherFields,
+        featuresEn: updatedFeaturesEn,
+        featuresBn: updatedFeaturesBn,
+      },
+    });
+
+    return result && {
+        status: true ,
+        message:"successfully subscription update"
+    };
+  } catch (error) {
+    throw catchError(error, "Failed to update subscription plan");
+  }
+};
+
 const SubscriptionPlanService = {
   createSubscriptionPlanIntoDB,
   getAllSubscriptionPlansFromDB,
-  getSingleSubscriptionPlanFromDB
+  getSingleSubscriptionPlanFromDB,
+  updateSubscriptionPlanIntoDB
 };
 
 export default SubscriptionPlanService;

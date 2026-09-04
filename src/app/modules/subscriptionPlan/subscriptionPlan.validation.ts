@@ -17,7 +17,14 @@ const createSubscriptionPlanZodSchema = z.object({
 });
 
 const updateSubscriptionPlanZodSchema = z.object({
-  body: createSubscriptionPlanZodSchema.shape.body.partial(),
+  body: createSubscriptionPlanZodSchema.shape.body.partial().extend({
+    addFeaturesEn: z.array(z.string().min(1)).optional(),
+    addFeaturesBn: z.array(z.string().min(1)).optional(),
+
+    // Custom Array Remove Operations
+    removeFeaturesEn: z.array(z.string().min(1)).optional(),
+    removeFeaturesBn: z.array(z.string().min(1)).optional(),
+  }),
 });
 
  const SubscriptionPlanValidation = {

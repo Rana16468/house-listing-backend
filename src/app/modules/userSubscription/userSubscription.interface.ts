@@ -4,7 +4,6 @@ export interface TUserSubscription {
   id?: string;
   userId: string;
   planId: string;
-  startDate?: Date;
   endDate: Date;
   isPaymentVerify?: boolean;
   paymentAmount: number;
@@ -12,12 +11,10 @@ export interface TUserSubscription {
   paymentMethod: string;
   invoiceNo?: string | null;
   paymentStatus?: PaymentStatus;
-  gatewayRef?: string | null;
   currency?: string;
   isActive?: boolean;
   isDeleted?: boolean;
-  createdAt?: Date;
-  updatedAt?: Date;
+ 
 }
 
 export type TUpdateUserSubscriptionPayload = Partial<TUserSubscription>;

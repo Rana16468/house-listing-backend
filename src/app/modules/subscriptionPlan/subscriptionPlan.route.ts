@@ -16,7 +16,7 @@ router.post(
 );
 router.get(
   '/get-all-subscription-plans',
-  auth(Role.ADMIN, Role.LANDLORD, Role.TENANT),
+//   auth(Role.ADMIN, Role.LANDLORD, Role.TENANT),
   SubscriptionPlanController.getAllSubscriptionPlans,
   
 );
@@ -24,6 +24,12 @@ router.get(
 router.get("/get-specific-subscription-plan/:id",
      auth(Role.ADMIN, Role.LANDLORD, Role.TENANT),
    SubscriptionPlanController.getSingleSubscriptionPlan
+);
+
+router.patch("/update-subscription/:id",
+    auth(Role.ADMIN),
+    validationRequest(SubscriptionPlanValidation.updateSubscriptionPlanZodSchema),
+    SubscriptionPlanController.updateSubscriptionPlan
 )
 
 

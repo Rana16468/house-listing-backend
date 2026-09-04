@@ -36,6 +36,17 @@ const getSingleSubscriptionPlan:RequestHandler = catchAsync(async (req, res) => 
   });
 });
 
+const updateSubscriptionPlan:RequestHandler=catchAsync(async(req , res)=>{
+
+    const result=await SubscriptionPlanService.updateSubscriptionPlanIntoDB(req.params.id as string, req.body);
+     sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Subscription Update successfully',
+    data: result,
+  });
+})
+
 
 
 
@@ -43,6 +54,7 @@ const SubscriptionPlanController={
     createSubscriptionPlan,
     getAllSubscriptionPlans,
 
-    getSingleSubscriptionPlan
+    getSingleSubscriptionPlan,
+    updateSubscriptionPlan
 }
 export default SubscriptionPlanController;

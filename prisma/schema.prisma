@@ -40,6 +40,11 @@ enum InvoiceStatus {
   PAID
   REJECTED
 }
+enum PaymentStatus {
+   PAID
+   UNPAID
+   PENDING
+}
 enum TicketStatus {
   PENDING
   IN_PROGRES
@@ -65,7 +70,7 @@ model User {
   ipAddress String?           // Last Login IP Address
   isOnline     Boolean           @default(true)
   isVerify     Boolean           @default(false)
-  subscription  UserSubscription?
+  subscription  UserSubscription[]
   properties    Property[] 
   photo      String?           // User Profile Photo
   isDeleted     Boolean           @default(false)
@@ -105,19 +110,30 @@ model SubscriptionPlan {
   @@index([tier, isDeleted, createdAt, priceMonthly])
 }
 model UserSubscription {
-  id        String           @id @default(uuid())
-  userId    String           @unique
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  planId    String
-  plan      SubscriptionPlan @relation(fields: [planId], references: [id])
-  startDate DateTime         @default(now())
-  endDate   DateTime
-  isActive  Boolean          @default(true)
-  isDeleted  Boolean          @default(false)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id            String           @id @default(uuid())
+  userId        String           
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  planId        String           @db.VarChar(255)
+  plan          SubscriptionPlan @relation(fields: [planId], references: [id])
+  
+  startDate     DateTime         @default(now()) 
+  endDate       DateTime
+  isPaymentVerify  Boolean       @default(false)
+  paymentAmount Float            @default(0.00)
+  trxId         String ?          @unique @db.VarChar(100)
+  paymentMethod String           @db.VarChar(50) 
+  invoiceNo     String?          @unique @db.VarChar(100) 
+  paymentStatus PaymentStatus     @default(PENDING) 
+  gatewayRef    String?          @db.VarChar(255)         
+  currency      String           @default("BDT") @db.VarChar(10)      
+  isActive      Boolean          @default(false) 
+  isDeleted     Boolean          @default(false)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
   @@map("user_subscriptions")
-  @@index([userId, planId, isActive, isDeleted, createdAt])
+  @@index([userId, planId, trxId, invoiceNo, paymentStatus, isActive, isDeleted, createdAt])
 }
 model Property {
   id          String   @id @default(uuid())
