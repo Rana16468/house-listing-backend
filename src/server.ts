@@ -13,16 +13,16 @@ async function main() {
 
     // 2. Start HTTP Server
     server = app.listen(config.port, () => {
-      logger.info(`🚀 Server running on http://${config.host}:${config.port}`);
+      console.log(`🚀 Server running on http://${config.host}:${config.port}`);
 
       if (isRedisAlive()) {
-        logger.info(
+        console.log(
           `✅ Redis connected successfully: ${
             config.redis.url || `${config.redis.host}:${config.redis.port}`
           }`
         );
       } else {
-        logger.warn("⚠️ Redis unavailable. Falling back to in-memory cache.");
+        console.log("⚠️ Redis unavailable. Falling back to in-memory cache.");
       }
     });
 
