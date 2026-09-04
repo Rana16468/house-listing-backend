@@ -33,3 +33,15 @@ app.use(globalErrorHandler);
 app.use(notFound);
 
 export default app;
+
+//docker build command 
+/* 
+1. docker-compose down
+2. docker-compose up --build -d
+3. docker-compose logs -f backend
+*/
+
+// radis 
+
+/* docker stop ts_express_redis
+docker start ts_express_redis */

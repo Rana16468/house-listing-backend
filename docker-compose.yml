@@ -1,0 +1,29 @@
+services:
+  # Redis Cache Service
+  redis:
+    image: redis:7-alpine
+    container_name: ts_express_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    # পাসওয়ার্ড দিতে চাইলে নিচের কমান্ডটি আনকমেন্ট করুন:
+    # command: redis-server --requirepass mySecret123
+
+  # Express Backend Service
+  backend:
+    build: .
+    container_name: ts_express_backend
+    restart: always
+    ports:
+      - "5001:5060"
+    environment:
+      DATABASE_URL: "postgresql://postgres.jkjcfgjoeijmphlrsolj:tAyuxQf3BSfjZHNv@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true&statement_cache_size=0"
+      REDIS_HOST: "redis" # 👈 localhost-এর জায়গায় ডকার সার্ভিস নাম "redis" হবে
+      REDIS_PORT: 6379
+      NODE_ENV: "development"
+      PORT: 5060
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      - redis

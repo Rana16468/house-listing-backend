@@ -23,4 +23,10 @@ export default {
     nodemailer_email: process.env.NODEMAILER_EMAIL,
     nodemailer_password: process.env.NODEMAILER_PASSWORD,
   },
+  redis: {
+    url: process.env.REDIS_URL,
+    host: process.env.REDIS_HOST,
+    port: process.env.REDIS_PORT ? Number(process.env.REDIS_PORT) : 6379,
+    password: process.env.REDIS_PASSWORD,
+  },
 };
