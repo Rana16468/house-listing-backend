@@ -1,35 +1,34 @@
 import { Server } from "http";
 import app from "./app";
-import config from "./app/config/index";
+
 import { connectRedis, disconnectRedis, isRedisAlive } from "./app/redis/redis";
 import { logger } from "./app/redis/logger";
+import config from "./app/config";
 
 let server: Server;
 
 async function main() {
   try {
-    // 1. Redis Connection Attempt
+    // Attempt Redis connection
     await connectRedis();
 
-    // 2. Start HTTP Server
-    server = app.listen(config.port, () => {
+    server = app.listen(Number(config.port), "0.0.0.0", () => {
       console.log(`🚀 Server running on http://${config.host}:${config.port}`);
 
-      if (isRedisAlive()) {
-        console.log(
-          `✅ Redis connected successfully: ${
-            config.redis.url || `${config.redis.host}:${config.redis.port}`
-          }`
-        );
-      } else {
-        console.log("⚠️ Redis unavailable. Falling back to in-memory cache.");
-      }
+      // Small delay to ensure async ioredis connection state updates properly
+      setTimeout(() => {
+        if (isRedisAlive()) {
+          console.log(
+            `✅ Redis connected successfully: ${config.redis.host}:${config.redis.port}`
+          );
+        } else {
+          console.log("⚠️ Redis unavailable. Falling back to in-memory cache.");
+        }
+      }, 500);
     });
 
-    // 3. Handle Port Errors
     server.on("error", (error: NodeJS.ErrnoException) => {
       if (error.syscall !== "listen") throw error;
-
       switch (error.code) {
         case "EACCES":
           logger.error(`❌ Port ${config.port} requires elevated privileges`);
@@ -51,13 +50,12 @@ async function main() {
 
 main();
 
-// Graceful Shutdown Function
+// Graceful Shutdown Logic
 const handleShutdown = async (signal: string) => {
   logger.info(`🟡 ${signal} received. Shutting down gracefully...`);
   try {
     if (server) {
       server.close(async () => {
-        logger.info("HTTP server closed.");
         await disconnectRedis();
         logger.info("✅ Process terminated gracefully");
         process.exit(0);
@@ -72,14 +70,10 @@ const handleShutdown = async (signal: string) => {
   }
 };
 
-// Process Event Listeners
 process.on("unhandledRejection", (reason) => {
   logger.error({ err: reason }, "🔴 Unhandled Rejection detected.");
-  if (server) {
-    server.close(() => process.exit(1));
-  } else {
-    process.exit(1);
-  }
+  if (server) server.close(() => process.exit(1));
+  else process.exit(1);
 });
 
 process.on("uncaughtException", (error) => {

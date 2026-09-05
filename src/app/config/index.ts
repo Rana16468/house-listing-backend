@@ -23,10 +23,10 @@ export default {
     nodemailer_email: process.env.NODEMAILER_EMAIL,
     nodemailer_password: process.env.NODEMAILER_PASSWORD,
   },
-  redis: {
+redis: {
+    host: process.env.REDIS_HOST || "localhost",
+    port: Number(process.env.REDIS_PORT) || 6379,
+    password: process.env.REDIS_PASSWORD || undefined, // 👈 এটি যোগ করুন
     url: process.env.REDIS_URL,
-    host: process.env.REDIS_HOST,
-    port: process.env.REDIS_PORT ? Number(process.env.REDIS_PORT) : 6379,
-    password: process.env.REDIS_PASSWORD,
-  },
+  }
 };

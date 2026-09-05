@@ -18,3 +18,9 @@ export interface TUserSubscription {
 }
 
 export type TUpdateUserSubscriptionPayload = Partial<TUserSubscription>;
+
+
+export interface ServiceResponse {
+  status: number;
+  message: string;
+}

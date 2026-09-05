@@ -31,9 +31,16 @@ const updateUserSubscriptionZodSchema = z.object({
   }),
 });
 
+const paymentVarificationSchema=z.object({
+  body: z.object({
+    requestId:z.string({error:"request Id is required"}).min(10).max(100)
+  })
+})
+
  const UserSubscriptionValidation = {
   createUserSubscriptionZodSchema,
   updateUserSubscriptionZodSchema,
+  paymentVarificationSchema
 };
 
 export default UserSubscriptionValidation

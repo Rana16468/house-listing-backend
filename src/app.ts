@@ -45,3 +45,5 @@ export default app;
 
 /* docker stop ts_express_redis
 docker start ts_express_redis */
+
+// radis run docker run -d --name ts_express_redis -p 6379:6379 redis:7-alpine

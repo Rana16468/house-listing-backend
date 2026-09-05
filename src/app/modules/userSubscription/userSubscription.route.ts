@@ -25,6 +25,12 @@ router.get('/delete-user-subscription/:id',
     auth(Role.ADMIN),
     UserSubscriptionController.deleteUserSubscription
 
+);
+
+router.patch("/verified_payment_request",
+    auth(Role.ADMIN),
+    validationRequest(UserSubscriptionValidation.updateUserSubscriptionZodSchema),
+    UserSubscriptionController.verifiedPaymentRequest
 )
 
 

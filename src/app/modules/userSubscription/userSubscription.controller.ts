@@ -49,12 +49,26 @@ const deleteUserSubscription: RequestHandler = catchAsync(async (req, res) => {
         message: 'successfully delete user subscription',
         data: result,
     })
-})
+});
+
+const verifiedPaymentRequest:RequestHandler=catchAsync(async(req , res)=>{
+
+    const result=await UserSubscriptionService.verifiedPaymentRequestIntoDb(req.body.requestId as string);
+    sendResponse(res, {
+        statusCode: httpStatus.OK,
+        success: true,
+        message: result.message,
+        data: result,
+    })
+
+
+});
 const UserSubscriptionController = {
     createUserSubscription,
     myAllSub,
     myActiveSubscription,
-    deleteUserSubscription
+    deleteUserSubscription,
+    verifiedPaymentRequest
 }
 
 export default UserSubscriptionController;

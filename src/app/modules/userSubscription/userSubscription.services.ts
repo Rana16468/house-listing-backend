@@ -1,4 +1,4 @@
-import { PaymentStatus, PlanTier, UserSubscription } from "@prisma/client";
+import { PaymentStatus, PlanTier, Prisma, UserSubscription } from "@prisma/client";
 import status from "http-status";
 import AppError from "../../errors/AppError";
 import catchError from "../../errors/catchError";
@@ -6,6 +6,7 @@ import prisma from "../../shared/prisma";
 import { jwtHelpers } from "../../helper/jwtHelpers";
 import config from "../../config";
 import { QueryBuilder, QueryParams, meta } from "../../builder/QueryBuilder";
+import { ServiceResponse } from "./userSubscription.interface";
 
 // ----------------------------------------------------------------------
 // Helper: Auto Generate Invoice Number (Format: INV-2026-001)
@@ -333,13 +334,64 @@ const deleteUserSubscriptionIntoDb=async(id:string)=>{
      catch (error) {
     throw catchError(error, "Failed to fetch user active subscription");
   }
-}
+};
+
+
+
+const verifiedPaymentRequestIntoDb = async (
+  requestId: string
+): Promise<ServiceResponse> => {
+  try {
+    
+    const subscription = await prisma.userSubscription.findUnique({
+      where: { id: requestId },
+      select: {
+        id: true,
+        plan: {
+          select: {
+            tier: true,
+          },
+        },
+      },
+    });
+
+    if (!subscription) {
+      throw new AppError(status.NOT_FOUND, 'Payment request not found');
+    }
+
+    // ৩. ভ্যালিডেশন চেক
+    if (subscription.plan.tier.includes(PlanTier.BASIC)) {
+      throw new AppError(
+        status.BAD_REQUEST,
+        'Basic subscription does not require payment verification'
+      );
+    }
+
+    // ৪. ইউনিক আইডির জন্য update() ব্যবহার
+    await prisma.userSubscription.update({
+      where: { id: subscription.id },
+      data: {
+        isActive: true,
+        paymentStatus: PaymentStatus.PAID,
+        isPaymentVerify: true,
+      },
+    });
+
+    return {
+      status: status.OK,
+      message: 'Successfully Payment Verified',
+    };
+  } catch (error) {
+    throw catchError(error, 'Failed to verify payment request');
+  }
+};
 
 const UserSubscriptionService = {
   createUserSubscriptionIntoDB,
   myActiveSubscriptionIntoDb,
   myAllSubIntoDb,
-  deleteUserSubscriptionIntoDb
+  deleteUserSubscriptionIntoDb,
+  verifiedPaymentRequestIntoDb
 };
 
 export default UserSubscriptionService;

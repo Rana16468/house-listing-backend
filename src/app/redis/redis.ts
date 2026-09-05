@@ -2,8 +2,6 @@ import Redis, { Redis as RedisType } from "ioredis";
 import config from "../config";
 import { logger } from "./logger";
 
-
-
 let redisClient: RedisType | null = null;
 let isRedisConnected = false;
 let redisDisabledUntil = 0;
@@ -18,17 +16,13 @@ const memoryCache = new Map<string, MemoryCacheEntry>();
 const REDIS_DISABLE_WINDOW_MS = 60 * 1000;
 
 const isAuthError = (error: unknown) => {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
+  if (!(error instanceof Error)) return false;
   const message = error.message.toUpperCase();
   return message.includes("NOAUTH") || message.includes("WRONGPASS");
 };
 
 const markRedisUnavailable = (error?: unknown) => {
   isRedisConnected = false;
-
   if (isAuthError(error)) {
     redisDisabledUntil = Date.now() + REDIS_DISABLE_WINDOW_MS;
   }
@@ -45,16 +39,11 @@ const setMemoryCache = (key: string, value: unknown, ttl = 3600) => {
 
 const getMemoryCache = (key: string) => {
   const entry = memoryCache.get(key);
-
-  if (!entry) {
-    return null;
-  }
-
+  if (!entry) return null;
   if (entry.expiresAt <= Date.now()) {
     memoryCache.delete(key);
     return null;
   }
-
   return JSON.parse(entry.value);
 };
 
@@ -64,7 +53,6 @@ const deleteMemoryCache = (key: string) => {
 
 const deleteMemoryCacheByPattern = (pattern: string) => {
   const regex = new RegExp(`^${pattern.replace(/\*/g, ".*")}$`);
-
   for (const key of memoryCache.keys()) {
     if (regex.test(key)) {
       memoryCache.delete(key);
@@ -78,42 +66,38 @@ export function getRedisClient(): RedisType {
   const trimmedUrl = config.redis.url?.trim();
   const trimmedPassword = config.redis.password?.trim();
 
-  redisClient = trimmedUrl
-    ? new Redis(trimmedUrl, {
-        lazyConnect: true,
-        maxRetriesPerRequest: 3,
-        retryStrategy: (times:number) => {
-          if (isRedisTemporarilyDisabled()) {
-            return null;
-          }
+  // URL থাকলে এবং তাতে পাসওয়ার্ড না থাকলে পাসওয়ার্ড যুক্ত করে নতুন URL তৈরি
+  let connectionUrl = trimmedUrl;
+  if (connectionUrl && trimmedPassword && !connectionUrl.includes("@")) {
+    connectionUrl = connectionUrl.replace("redis://", `redis://:${trimmedPassword}@`);
+  }
 
-          return Math.min(times * 50, 2000);
-        },
-      })
+  const commonOptions = {
+    lazyConnect: true,
+    maxRetriesPerRequest: 3,
+    retryStrategy: (times: number) => {
+      if (isRedisTemporarilyDisabled()) return null;
+      return Math.min(times * 50, 2000);
+    },
+  };
+
+  redisClient = connectionUrl
+    ? new Redis(connectionUrl, commonOptions)
     : new Redis({
         host: config.redis.host,
         port: config.redis.port,
         ...(trimmedPassword ? { password: trimmedPassword } : {}),
-        lazyConnect: true,
-        maxRetriesPerRequest: 3,
-        retryStrategy: (times:number) => {
-          if (isRedisTemporarilyDisabled()) {
-            return null;
-          }
-
-          return Math.min(times * 50, 2000);
-        },
+        ...commonOptions,
       });
 
   redisClient.on("connect", () => {
     if (!redisFailureLogged) {
       logger.info("Redis connected");
     }
-
     isRedisConnected = true;
   });
 
-  redisClient.on("error", (err:any) => {
+  redisClient.on("error", (err: any) => {
     if (!redisFailureLogged) {
       logger.warn(
         { err: { message: err.message } },
@@ -134,7 +118,6 @@ export function getRedisClient(): RedisType {
     if (!redisFailureLogged) {
       logger.warn("Redis connection closed");
     }
-
     markRedisUnavailable();
   });
 
@@ -143,13 +126,11 @@ export function getRedisClient(): RedisType {
 
 export async function connectRedis(): Promise<void> {
   try {
-    if (isRedisTemporarilyDisabled()) {
-      return;
-    }
+    if (isRedisTemporarilyDisabled()) return;
 
     const client = getRedisClient();
 
-    if (client.status !== "ready") {
+    if (client.status !== "ready" && client.status !== "connecting") {
       await client.connect();
     }
 
