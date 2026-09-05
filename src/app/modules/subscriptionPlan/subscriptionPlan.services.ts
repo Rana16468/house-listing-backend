@@ -3,7 +3,11 @@ import { SubscriptionPlan } from "@prisma/client";
 import status from "http-status";
 import AppError from "../../errors/AppError";
 import catchError from "../../errors/catchError";
-
+import { getCache, setCache, deleteCache, deleteByPattern } from "./../../redis/redis"; 
+const CACHE_TTL = 3600; // 1 hour
+const ALL_PLANS_CACHE_PATTERN = "subscription_plan:all:*";
+const allPlansCacheKey = (lang: string) => `subscription_plan:all:${lang}`;
+const singlePlanCacheKey = (id: string) => `subscription_plan:one:${id}`;
 
 const createSubscriptionPlanIntoDB = async (
   payload: SubscriptionPlan
@@ -25,6 +29,9 @@ const createSubscriptionPlanIntoDB = async (
       data: payload,
     });
 
+    // Invalidate all cached listings — a new plan changes every "get all" response
+    await deleteByPattern(ALL_PLANS_CACHE_PATTERN);
+
     return result;
   } catch (error) {
     throw catchError(error, "Failed to create subscription plan");
@@ -33,24 +40,34 @@ const createSubscriptionPlanIntoDB = async (
 
 // 📖 Get All Plans (Filtered by Language)
 const getAllSubscriptionPlansFromDB = async (lang: string = 'en') => {
-  try{
+  try {
+    const cacheKey = allPlansCacheKey(lang);
+
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const plans = await prisma.subscriptionPlan.findMany({
-    where: { isDeleted: false },
-  });
+      where: { isDeleted: false },
+    });
 
-  return plans?.map((plan) => ({
-    id: plan.id,
-    tier: plan.tier,
-    maxUnits: plan.maxUnits,
-    flat: plan.flat, 
-    priceMonthly: plan.priceMonthly,
-    name: lang === 'bn' ? plan.nameBn : plan.nameEn,
-    unitDetails: lang === 'bn' ? plan.unitDetailsBn : plan.unitDetailsEn,
-    features: lang === 'bn' ? plan.featuresBn : plan.featuresEn,
-    createdAt: plan.createdAt,
-    updatedAt: plan.updatedAt,
-  }));
+    const mapped = plans?.map((plan) => ({
+      id: plan.id,
+      tier: plan.tier,
+      maxUnits: plan.maxUnits,
+      flat: plan.flat,
+      priceMonthly: plan.priceMonthly,
+      name: lang === 'bn' ? plan.nameBn : plan.nameEn,
+      unitDetails: lang === 'bn' ? plan.unitDetailsBn : plan.unitDetailsEn,
+      features: lang === 'bn' ? plan.featuresBn : plan.featuresEn,
+      createdAt: plan.createdAt,
+      updatedAt: plan.updatedAt,
+    }));
 
+    await setCache(cacheKey, mapped, CACHE_TTL);
+
+    return mapped;
   }
   catch (error) {
     throw catchError(error, "Failed to fetch subscription plans");
@@ -58,28 +75,36 @@ const getAllSubscriptionPlansFromDB = async (lang: string = 'en') => {
 };
 
 const getSingleSubscriptionPlanFromDB = async (id: string, lang: string = 'en') => {
- try{
-     const plan = await prisma.subscriptionPlan.findFirstOrThrow({
-    where: { id, isDeleted: false },
-  });
+  try {
+    const cacheKey = singlePlanCacheKey(id);
 
-  return plan
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return cached;
+    }
 
- }
- catch(error){
+    const plan = await prisma.subscriptionPlan.findFirstOrThrow({
+      where: { id, isDeleted: false },
+    });
+
+    await setCache(cacheKey, plan, CACHE_TTL);
+
+    return plan;
+  }
+  catch (error) {
     throw catchError(error, "Failed to fetch subscription plan");
- }
+  }
 };
 
 const updateSubscriptionPlanIntoDB = async (
   id: string,
   payload: Partial<SubscriptionPlan & {
-  addFeaturesEn?: string[];
-  addFeaturesBn?: string[];
-  removeFeaturesEn?: string[];
-  removeFeaturesBn?: string[];
-}>
-): Promise<{status:boolean, message:string}> => {
+    addFeaturesEn?: string[];
+    addFeaturesBn?: string[];
+    removeFeaturesEn?: string[];
+    removeFeaturesBn?: string[];
+  }>
+): Promise<{ status: boolean, message: string }> => {
   try {
     const existingPlan = await prisma.subscriptionPlan.findFirst({
       where: { id, isDeleted: false },
@@ -100,7 +125,7 @@ const updateSubscriptionPlanIntoDB = async (
       ...otherFields
     } = payload;
 
-    
+
     let updatedFeaturesEn = featuresEn !== undefined ? featuresEn : [...existingPlan.featuresEn];
 
     // Add new English features (Duplicate avoid using Set)
@@ -139,50 +164,66 @@ const updateSubscriptionPlanIntoDB = async (
       },
     });
 
+    // Invalidate the specific plan's cache and every cached listing
+    await Promise.all([
+      deleteCache(singlePlanCacheKey(id)),
+      deleteByPattern(ALL_PLANS_CACHE_PATTERN),
+    ]);
+
     return result && {
-        status: true ,
-        message:"successfully subscription update"
+      status: true,
+      message: "successfully subscription update"
     };
   } catch (error) {
     throw catchError(error, "Failed to update subscription plan");
   }
 };
 
-const deleteSubscriptionIntoDb=async(subscriptionId: string):Promise<{
-    status:number,
-    message: string 
-}>=>{
+const deleteSubscriptionIntoDb = async (subscriptionId: string): Promise<{
+  status: number,
+  message: string
+}> => {
 
-    try{
+  try {
 
-         await prisma.subscriptionPlan.findFirstOrThrow({
-          where:{id:subscriptionId}
-         }).catch(error=>{
-            throw new AppError(status.NOT_FOUND, 'this subscription is not founded', error);
-         });
-         // delete all subscriber user
-         await prisma.userSubscription.deleteMany({where:{
-          planId:subscriptionId
-         }}).catch(error=>{
-            throw new AppError(status.NOT_EXTENDED, 
-                'some issues  by the user subscription collection section', error);
+    await prisma.subscriptionPlan.findFirstOrThrow({
+      where: { id: subscriptionId }
+    }).catch(error => {
+      throw new AppError(status.NOT_FOUND, 'this subscription is not founded', error);
+    });
+    // delete all subscriber user
+    await prisma.userSubscription.deleteMany({
+      where: {
+        planId: subscriptionId
+      }
+    }).catch(error => {
+      throw new AppError(status.NOT_EXTENDED,
+        'some issues  by the user subscription collection section', error);
 
-         });
-        // delete subscription 
-         await prisma.subscriptionPlan.delete({where:{
-            id:subscriptionId
-         }}).catch(error=>{
-            throw new AppError(status.NOT_EXTENDED, 
-                'issues by the delete subscription section', error);
-         });
+    });
+    // delete subscription 
+    await prisma.subscriptionPlan.delete({
+      where: {
+        id: subscriptionId
+      }
+    }).catch(error => {
+      throw new AppError(status.NOT_EXTENDED,
+        'issues by the delete subscription section', error);
+    });
 
-         return {
-            status: status.OK,
-            message:"Successfully delete Subscription"
-         }
+    // Invalidate the specific plan's cache and every cached listing
+    await Promise.all([
+      deleteCache(singlePlanCacheKey(subscriptionId)),
+      deleteByPattern(ALL_PLANS_CACHE_PATTERN),
+    ]);
 
+    return {
+      status: status.OK,
+      message: "Successfully delete Subscription"
     }
-    catch (error) {
+
+  }
+  catch (error) {
     throw catchError(error, "Failed to update subscription plan");
   }
 }

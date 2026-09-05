@@ -39,7 +39,7 @@ export interface AuthUser {
     const user = await prisma.user.findUnique({
       where: { id: String(decoded.id), isDeleted: false,status: Status.ACTIVE, isVerify: true },
       select: { id: true, role: true, phone: true },
-    });
+    })
 
     if (!user) {
       throw new AppError(httpStatus.NOT_FOUND, 'User no longer exists');

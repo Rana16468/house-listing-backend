@@ -7,7 +7,7 @@ services:
     ports:
       - "6379:6379"
     # পাসওয়ার্ড দিতে চাইলে নিচের কমান্ডটি আনকমেন্ট করুন:
-    # command: redis-server --requirepass mySecret123
+    command: redis-server --requirepass mySecret123
 
   # Express Backend Service
   backend:
