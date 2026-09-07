@@ -9,11 +9,11 @@ const createUserZodSchema = z.object({
       })
       .min(1, 'Name cannot be empty'),
 
-    phone: z
-      .string({
-        error: 'Phone number is required',
-      })
-      .min(10, 'Phone number must be at least 10 digits'),
+    // phone: z
+    //   .string({
+    //     error: 'Phone number is required',
+    //   })
+    //   .min(10, 'Phone number must be at least 10 digits'),
 
     password: z
       .string()

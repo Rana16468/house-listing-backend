@@ -3,16 +3,25 @@ import UserService from "./user.services";
 import catchAsync from "../../utils/asyncCatch";
 import sendResponse from "../../utils/sendResponse";
 import httpStatus from "http-status";
+import config from "../../config";
 
 const createUser:RequestHandler = catchAsync(async (req, res) => {
     
     const result = await UserService.createUserIntoDb(req.body);
-    sendResponse(res, {
-        statusCode: httpStatus.CREATED,
-        success: true,
-        message: "User created successfully",
-        data: result,
-    });
+   const { refreshToken, accessToken } = result;
+  res.cookie("refreshToken", refreshToken, {
+    secure: config.NODE_ENV === "production",
+    httpOnly: true,
+  });
+  sendResponse(res, {
+    success: true,
+    statusCode: httpStatus.OK,
+    message: "Successfully Login",
+    data: {
+      accessToken,
+      refreshToken
+    },
+  });
 });
 
 const createAccount:RequestHandler = catchAsync(async (req, res) => {

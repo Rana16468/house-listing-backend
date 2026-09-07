@@ -18,7 +18,7 @@ RUN npx prisma generate
 COPY . .
 
 # Port Expose করা
-EXPOSE 5060
+EXPOSE 5000
 
 # Docker-এ ডেভেলপমেন্ট মোডে রান করার কমান্ড
 CMD ["npm", "run", "dev"]

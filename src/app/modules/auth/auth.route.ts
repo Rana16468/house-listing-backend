@@ -11,6 +11,11 @@ const router = express.Router();
 router.post('/admin-login',
      validationRequest(AuthValidation.loginZodSchema),
       AuthController.loginAdminUser);
+router.post(
+  "/refresh-token",
+  validationRequest(AuthValidation.requestTokenValidationSchema),
+  AuthController.refreshToken
+);
 
 router.patch('/change-password',auth(Role.ADMIN, Role.LANDLORD, Role.TENANT),
      validationRequest(AuthValidation.changePasswordZodSchema),

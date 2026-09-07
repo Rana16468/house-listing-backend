@@ -7,7 +7,7 @@ const createUserSubscriptionZodSchema = z.object({
     endDate: z.string({ error: 'End date is required' }).datetime(),
     paymentAmount: z.number({ error: 'Payment amount is required' }).nonnegative(),
     trxId: z.string({ error: 'Transaction ID is required' }).min(1).optional(),
-    paymentMethod: z.string({ error: 'Payment method is required' }).min(1),
+    paymentMethod: z.string({ error: 'Payment method is required' }).min(1).optional(),
     invoiceNo: z.string().optional(),
     paymentStatus: z.nativeEnum(PaymentStatus).optional(),
     gatewayRef: z.string().optional(),

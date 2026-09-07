@@ -230,10 +230,66 @@ const findBySpecificUserProfileIntoDb = async (userId: string) => {
     }
 };
 
+const refreshTokenIntoDb = async (token: string) => {
+  try {
+    const decoded = jwtHelpers.verifyToken(
+      token,
+      config.jwt_refresh_secret as string
+    );
+
+    const { id } = decoded;
+
+    const isUserExist = await prisma.user.findFirst({
+      where: {
+        id: id,
+        isVerify: true,
+         status: Status.ACTIVE
+      },
+      select: {
+        id: true,
+        isVerify: true,
+        email: true,
+        role: true,
+      },
+    });
+
+    if (!isUserExist) {
+      throw new AppError(httpStatus.NOT_FOUND, "User not found", "");
+    }
+
+    let accessToken: string | null = null;
+
+    if (isUserExist.isVerify) {
+      const jwtPayload = {
+        id: isUserExist.id,
+        role: isUserExist.role.toString() ,
+        email: isUserExist.email,
+      };
+
+      try {
+        accessToken = jwtHelpers.generateToken(
+          jwtPayload as TJwtPayload ,
+          config.jwt_access_secret as string,
+          config.expires_in as string
+        );
+      } catch (error: unknown) {
+        catchError(error, "Token generation failed");
+      }
+    }
+
+    return {
+      accessToken,
+    };
+  } catch (error: unknown) {
+    catchError(error, "Invalid or expired refresh token");
+  }
+}; 
+
 const AuthService = {
     loginAdminAccountIntoDb,
     changePasswordIntoDB,
-    findBySpecificUserProfileIntoDb
+    findBySpecificUserProfileIntoDb,
+    refreshTokenIntoDb
 };
 
 export default AuthService;

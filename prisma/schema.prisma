@@ -59,7 +59,7 @@ enum PaymentMethod {
 model User {
   id            String            @id @default(uuid())
   name          String
-  phone         String            @unique
+  phone         String?           
   password      String? 
   email         String?           @unique
   status        Status            @default(ACTIVE)

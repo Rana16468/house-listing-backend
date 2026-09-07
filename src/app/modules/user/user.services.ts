@@ -13,6 +13,9 @@ import deleteFileFromCloudinary from "../../utils/Cloudinary/deleteFileFromCloud
 
 const createUserIntoDb = async (payload: TUser) => {
 
+ 
+ 
+
   return await prisma.$transaction(async (tx) => {
     // 1. Check if user exists (including soft-deleted & blocked checks)
     const existingUser = await tx.user.findFirst({
@@ -25,6 +28,7 @@ const createUserIntoDb = async (payload: TUser) => {
         email: true,
         status: true,
         isDeleted: true,
+        phone: true
       },
     });
 
@@ -103,7 +107,7 @@ const createUserIntoDb = async (payload: TUser) => {
 
 const createAccountIntoDb = async (payload: TUser) => {
   // 1. Validate mandatory identifier
-  if (!payload.email && !payload.phone) {
+  if (!payload.email) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
       'Either email or phone is required to create an account'

@@ -32,9 +32,16 @@ const changePasswordZodSchema = z.object({
   }),
 });
 
+const requestTokenValidationSchema = z.object({
+  cookies: z.object({
+    refreshToken: z.string({ error: "Refresh Token is Required" }),
+  }),
+});
+
  const AuthValidation = {
   loginZodSchema,
-  changePasswordZodSchema
+  changePasswordZodSchema,
+  requestTokenValidationSchema
 };
 
 export default AuthValidation;

@@ -23,6 +23,18 @@ const loginAdminUser: RequestHandler = catchAsync(async (req, res) => {
     },
   });
 });
+const refreshToken: RequestHandler = catchAsync(async (req, res) => {
+  const { refreshToken } = req.cookies;
+
+
+  const result = await AuthService.refreshTokenIntoDb(refreshToken);
+  sendResponse(res, {
+    success: true,
+    statusCode: httpStatus.OK,
+    message: "Access token is Retrived Successfully",
+    data: result,
+  });
+});
 
 const changePassword: RequestHandler = catchAsync(async (req, res) => {
   const result = await AuthService.changePasswordIntoDB(req.body, req.user.id);
@@ -47,6 +59,7 @@ const findBySpecificUserProfile: RequestHandler = catchAsync(async (req, res) =>
 const AuthController = {
   loginAdminUser,
   changePassword,
-  findBySpecificUserProfile
+  findBySpecificUserProfile,
+  refreshToken
 };
 export default AuthController;
