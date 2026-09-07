@@ -7,6 +7,31 @@ import { jwtHelpers } from "../../helper/jwtHelpers";
 import config from "../../config";
 import { QueryBuilder, QueryParams, meta } from "../../builder/QueryBuilder";
 import { ServiceResponse } from "./userSubscription.interface";
+import {
+  deleteByPattern,
+  deleteCache,
+  getCache,
+  setCache,
+} from "../../redis/redis";
+
+const CACHE_TTL = 300;
+const USER_SUBSCRIPTION_CACHE_PATTERN = "user_subscription:*";
+const userSubscriptionCacheKey = (userId: string, query: unknown) =>
+  `user_subscription:${userId}:${Buffer.from(JSON.stringify(query)).toString("base64url")}`;
+const activeSubscriptionCacheKey = (userId: string) =>
+  `user_subscription:active:${userId}`;
+
+const invalidateUserSubscriptionCache = async (userId?: string) => {
+  if (!userId) {
+    await deleteByPattern(USER_SUBSCRIPTION_CACHE_PATTERN);
+    return;
+  }
+
+  await Promise.all([
+    deleteByPattern(`user_subscription:${userId}:*`),
+    deleteCache(activeSubscriptionCacheKey(userId)),
+  ]);
+};
 
 // ----------------------------------------------------------------------
 // Helper: Auto Generate Invoice Number (Format: INV-2026-001)
@@ -98,7 +123,7 @@ const createUserSubscriptionIntoDB = async (
       const invoiceNo = await generateInvoiceNo();
 
       // ফ্রি সাবস্ক্রিপশন তৈরি -> এটি অটোমেটিক isActive: true হবে
-      return await prisma.userSubscription.create({
+      const result = await prisma.userSubscription.create({
         data: {
           ...payload,
           userId,
@@ -117,6 +142,8 @@ const createUserSubscriptionIntoDB = async (
         },
         include: { plan: true },
       });
+      await invalidateUserSubscriptionCache(userId);
+      return result;
     }
 
     // =========================================================================
@@ -179,7 +206,7 @@ const createUserSubscriptionIntoDB = async (
 
     // --- যদি ইউজার আগে এই প্ল্যান কিনে থাকে -> UPDATE হবে ---
     if (existingSamePlanSubscription) {
-      return await prisma.userSubscription.update({
+      const result = await prisma.userSubscription.update({
         where: {
           id: existingSamePlanSubscription.id,
         },
@@ -192,12 +219,14 @@ const createUserSubscriptionIntoDB = async (
         },
         include: { plan: true },
       });
+      await invalidateUserSubscriptionCache(userId);
+      return result;
     }
 
     // --- যদি ইউজার প্রথমবার এই প্ল্যান কিনে থাকে -> CREATE হবে ---
     const invoiceNo = await generateInvoiceNo();
 
-    return await prisma.userSubscription.create({
+    const result = await prisma.userSubscription.create({
       data: {
         ...payload,
         userId,
@@ -209,6 +238,8 @@ const createUserSubscriptionIntoDB = async (
       },
       include: { plan: true },
     });
+    await invalidateUserSubscriptionCache(userId);
+    return result;
   } catch (error) {
     throw catchError(error, "Failed to process user subscription");
   }
@@ -224,6 +255,17 @@ const myAllSubIntoDb = async (userId: string, query: QueryParams) => {
 
     // ২. Prisma এর জন্য কোয়েরি ফিল্ডস জেনারেট করা
     const builtQuery = queryBuilder.build("createdAt");
+    const cacheKey = userSubscriptionCacheKey(userId, {
+      where: builtQuery.where,
+      orderBy: builtQuery.orderBy,
+      skip: builtQuery.skip,
+      take: builtQuery.take,
+    });
+    const cached = await getCache(cacheKey);
+
+    if (cached !== null) {
+      return cached;
+    }
 
     // ৩. একসাথে ডাটা এবং টোটাল কাউন্ট ফেচ করা (প্যাজিনেশনের জন্য)
     const [result, total] = await Promise.all([
@@ -260,10 +302,12 @@ const myAllSubIntoDb = async (userId: string, query: QueryParams) => {
     // ৪. মেটা-ডাটা জেনারেট করা
     const pageMeta = meta(total, builtQuery);
 
-    return {
+    const response = {
       meta: pageMeta,
       data: result,
     };
+    await setCache(cacheKey, response, CACHE_TTL);
+    return response;
   } catch (error) {
     throw catchError(error, "Failed to fetch user subscription history");
   }
@@ -271,37 +315,47 @@ const myAllSubIntoDb = async (userId: string, query: QueryParams) => {
 
 const myActiveSubscriptionIntoDb = async (userId: string) => {
   try {
-    const activeSubscription = await prisma.userSubscription.findFirst({
-      where: {
-        userId,
-        isActive: true,
-        isPaymentVerify:true,
-        paymentStatus: PaymentStatus.PAID,
-        isDeleted: false,
-      },
-      orderBy: {
-        updatedAt: "desc", 
-      },
-      select:{
-        startDate:true,
-        endDate:true,
-        isActive:true ,
-        isPaymentVerify:true,
-        paymentStatus:true
+    const cacheKey = activeSubscriptionCacheKey(userId);
+    let activeSubscription = await getCache(cacheKey);
+
+    if (activeSubscription === null) {
+      activeSubscription = await prisma.userSubscription.findFirst({
+        where: {
+          userId,
+          isActive: true,
+          isPaymentVerify: true,
+          paymentStatus: PaymentStatus.PAID,
+          isDeleted: false,
+        },
+        orderBy: {
+          updatedAt: "desc",
+        },
+        select: {
+          startDate: true,
+          endDate: true,
+          isActive: true,
+          isPaymentVerify: true,
+          paymentStatus: true,
+        },
+      });
+
+      if (activeSubscription) {
+        await setCache(cacheKey, activeSubscription, CACHE_TTL);
       }
-    }).catch(error=>{
-        throw new AppError(
+    }
+
+    if (!activeSubscription) {
+      throw new AppError(
         status.NOT_FOUND,
-        "No active subscription found for this user", error
+        "No active subscription found for this user"
       );
-    });
+    }
 
-    
-
-
-
-    const subscriptionToken=jwtHelpers.generateSubscriptionToken(activeSubscription as any, config.jwt_access_secret as string,
-        config.expires_in as string)
+    const subscriptionToken = jwtHelpers.generateSubscriptionToken(
+      activeSubscription as any,
+      config.jwt_access_secret as string,
+      config.expires_in as string
+    );
 
     return subscriptionToken;
   } catch (error) {
@@ -314,7 +368,8 @@ const deleteUserSubscriptionIntoDb=async(id:string)=>{
      try{
 
         const isExistAvailableSubscription=await prisma.userSubscription.findFirst({where:{id},select:{
-            id:true
+          id:true,
+          userId: true
         }});
         if(!isExistAvailableSubscription){
             return {
@@ -329,6 +384,7 @@ const deleteUserSubscriptionIntoDb=async(id:string)=>{
         }).catch((error)=>{
             throw new AppError(status.SERVICE_UNAVAILABLE, 'delete subscription server section some issues ', error);
         })
+        await invalidateUserSubscriptionCache(isExistAvailableSubscription.userId);
 
      }
      catch (error) {
@@ -347,6 +403,7 @@ const verifiedPaymentRequestIntoDb = async (
       where: { id: requestId },
       select: {
         id: true,
+        userId: true,
         plan: {
           select: {
             tier: true,
@@ -376,6 +433,7 @@ const verifiedPaymentRequestIntoDb = async (
         isPaymentVerify: true,
       },
     });
+    await invalidateUserSubscriptionCache(subscription.userId);
 
     return {
       status: status.OK,

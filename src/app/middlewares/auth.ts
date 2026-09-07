@@ -6,6 +6,10 @@ import config from '../config';
 import { prisma } from '../../prisma';
 import catchAsync from '../utils/asyncCatch';
 import AppError from '../errors/AppError';
+import { getCache, setCache } from '../redis/redis';
+
+const AUTH_USER_CACHE_TTL = 30;
+const authUserCacheKey = (userId: string) => `auth:user:${userId}`;
 
 
 export interface AuthUser {
@@ -35,11 +39,19 @@ export interface AuthUser {
       throw new AppError(httpStatus.NOT_FOUND, 'Invalid or expired token');
     }
 
-    // 3. Database query
-    const user = await prisma.user.findUnique({
-      where: { id: String(decoded.id), isDeleted: false,status: Status.ACTIVE, isVerify: true },
-      select: { id: true, role: true, phone: true },
-    })
+    const userId = String(decoded.id);
+    let user = await getCache(authUserCacheKey(userId));
+
+    if (user === null) {
+      user = await prisma.user.findUnique({
+        where: { id: userId, isDeleted: false,status: Status.ACTIVE, isVerify: true },
+        select: { id: true, role: true, phone: true },
+      });
+
+      if (user) {
+        await setCache(authUserCacheKey(userId), user, AUTH_USER_CACHE_TTL);
+      }
+    }
 
     if (!user) {
       throw new AppError(httpStatus.NOT_FOUND, 'User no longer exists');

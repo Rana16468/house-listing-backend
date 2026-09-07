@@ -3,11 +3,12 @@ import { SubscriptionPlan } from "@prisma/client";
 import status from "http-status";
 import AppError from "../../errors/AppError";
 import catchError from "../../errors/catchError";
-import { getCache, setCache, deleteCache, deleteByPattern } from "./../../redis/redis"; 
+import { getCache, setCache, deleteByPattern } from "./../../redis/redis";
 const CACHE_TTL = 3600; // 1 hour
 const ALL_PLANS_CACHE_PATTERN = "subscription_plan:all:*";
 const allPlansCacheKey = (lang: string) => `subscription_plan:all:${lang}`;
-const singlePlanCacheKey = (id: string) => `subscription_plan:one:${id}`;
+const singlePlanCacheKey = (id: string, lang: string) =>
+  `subscription_plan:one:${id}:${lang}`;
 
 const createSubscriptionPlanIntoDB = async (
   payload: SubscriptionPlan
@@ -76,7 +77,7 @@ const getAllSubscriptionPlansFromDB = async (lang: string = 'en') => {
 
 const getSingleSubscriptionPlanFromDB = async (id: string, lang: string = 'en') => {
   try {
-    const cacheKey = singlePlanCacheKey(id);
+    const cacheKey = singlePlanCacheKey(id, lang);
 
     const cached = await getCache(cacheKey);
     if (cached) {
@@ -87,9 +88,22 @@ const getSingleSubscriptionPlanFromDB = async (id: string, lang: string = 'en') 
       where: { id, isDeleted: false },
     });
 
-    await setCache(cacheKey, plan, CACHE_TTL);
+    const mapped = {
+      id: plan.id,
+      tier: plan.tier,
+      maxUnits: plan.maxUnits,
+      flat: plan.flat,
+      priceMonthly: plan.priceMonthly,
+      name: lang === "bn" ? plan.nameBn : plan.nameEn,
+      unitDetails: lang === "bn" ? plan.unitDetailsBn : plan.unitDetailsEn,
+      features: lang === "bn" ? plan.featuresBn : plan.featuresEn,
+      createdAt: plan.createdAt,
+      updatedAt: plan.updatedAt,
+    };
 
-    return plan;
+    await setCache(cacheKey, mapped, CACHE_TTL);
+
+    return mapped;
   }
   catch (error) {
     throw catchError(error, "Failed to fetch subscription plan");
@@ -166,7 +180,7 @@ const updateSubscriptionPlanIntoDB = async (
 
     // Invalidate the specific plan's cache and every cached listing
     await Promise.all([
-      deleteCache(singlePlanCacheKey(id)),
+      deleteByPattern(`subscription_plan:one:${id}:*`),
       deleteByPattern(ALL_PLANS_CACHE_PATTERN),
     ]);
 
@@ -213,7 +227,7 @@ const deleteSubscriptionIntoDb = async (subscriptionId: string): Promise<{
 
     // Invalidate the specific plan's cache and every cached listing
     await Promise.all([
-      deleteCache(singlePlanCacheKey(subscriptionId)),
+      deleteByPattern(`subscription_plan:one:${subscriptionId}:*`),
       deleteByPattern(ALL_PLANS_CACHE_PATTERN),
     ]);
 

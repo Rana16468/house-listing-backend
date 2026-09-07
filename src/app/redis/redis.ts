@@ -6,6 +6,7 @@ let redisClient: RedisType | null = null;
 let isRedisConnected = false;
 let redisDisabledUntil = 0;
 let redisFailureLogged = false;
+let consecutiveFailures = 0;
 
 type MemoryCacheEntry = {
   value: string;
@@ -13,7 +14,12 @@ type MemoryCacheEntry = {
 };
 
 const memoryCache = new Map<string, MemoryCacheEntry>();
-const REDIS_DISABLE_WINDOW_MS = 60 * 1000;
+
+// Base backoff window + exponential growth, capped, so a dead Redis host
+// doesn't force every single request to eat a full connect/handshake
+// timeout. This applies to ALL connection failures, not just auth errors.
+const REDIS_DISABLE_BASE_MS = 5 * 1000;
+const REDIS_DISABLE_MAX_MS = 5 * 60 * 1000;
 
 const isAuthError = (error: unknown) => {
   if (!(error instanceof Error)) return false;
@@ -23,9 +29,31 @@ const isAuthError = (error: unknown) => {
 
 const markRedisUnavailable = (error?: unknown) => {
   isRedisConnected = false;
+  consecutiveFailures += 1;
+
+  // Previously this backoff only kicked in for NOAUTH/WRONGPASS, so any
+  // other failure (wrong host/port, network unreachable, TLS/timeout,
+  // Redis down) caused every single request to re-attempt a full
+  // connect handshake before falling back to memory cache — that retry
+  // was the source of the ~900ms tax on every "cached" GET call.
+  // Now ANY connection failure triggers an exponential backoff window.
+  const backoff = Math.min(
+    REDIS_DISABLE_BASE_MS * 2 ** (consecutiveFailures - 1),
+    REDIS_DISABLE_MAX_MS
+  );
+  redisDisabledUntil = Date.now() + backoff;
+
   if (isAuthError(error)) {
-    redisDisabledUntil = Date.now() + REDIS_DISABLE_WINDOW_MS;
+    // Auth errors won't self-resolve without a config change, so don't
+    // bother retrying quickly at all.
+    redisDisabledUntil = Date.now() + REDIS_DISABLE_MAX_MS;
   }
+};
+
+const markRedisAvailable = () => {
+  isRedisConnected = true;
+  consecutiveFailures = 0;
+  redisDisabledUntil = 0;
 };
 
 const isRedisTemporarilyDisabled = () => Date.now() < redisDisabledUntil;
@@ -75,6 +103,10 @@ export function getRedisClient(): RedisType {
   const commonOptions = {
     lazyConnect: true,
     maxRetriesPerRequest: 3,
+    // Fail fast instead of hanging: if a connect attempt can't establish
+    // within this window, bail out so we fall back to memory cache
+    // quickly rather than blocking the request.
+    connectTimeout: 2000,
     retryStrategy: (times: number) => {
       if (isRedisTemporarilyDisabled()) return null;
       return Math.min(times * 50, 2000);
@@ -94,7 +126,12 @@ export function getRedisClient(): RedisType {
     if (!redisFailureLogged) {
       logger.info("Redis connected");
     }
-    isRedisConnected = true;
+  });
+
+  redisClient.on("ready", () => {
+    logger.info("Redis ready");
+    markRedisAvailable();
+    redisFailureLogged = false;
   });
 
   redisClient.on("error", (err: any) => {
@@ -133,8 +170,6 @@ export async function connectRedis(): Promise<void> {
     if (client.status !== "ready" && client.status !== "connecting") {
       await client.connect();
     }
-
-    redisFailureLogged = false;
   } catch (err) {
     markRedisUnavailable(err);
 
@@ -166,12 +201,14 @@ export async function disconnectRedis(): Promise<void> {
 
 export const setCache = async (key: string, value: unknown, ttl = 3600) => {
   try {
-    await connectRedis();
+    if (!isRedisTemporarilyDisabled()) {
+      await connectRedis();
 
-    if (isRedisConnected && redisClient) {
-      await redisClient.set(key, JSON.stringify(value), "EX", ttl);
-      logger.info({ key, ttl }, "Redis cache set");
-      return;
+      if (isRedisConnected && redisClient) {
+        await redisClient.set(key, JSON.stringify(value), "EX", ttl);
+        logger.info({ key, ttl }, "Redis cache set");
+        return;
+      }
     }
   } catch (err) {
     markRedisUnavailable(err);
@@ -182,18 +219,20 @@ export const setCache = async (key: string, value: unknown, ttl = 3600) => {
 
 export const getCache = async (key: string) => {
   try {
-    await connectRedis();
+    if (!isRedisTemporarilyDisabled()) {
+      await connectRedis();
 
-    if (isRedisConnected && redisClient) {
-      const data = await redisClient.get(key);
+      if (isRedisConnected && redisClient) {
+        const data = await redisClient.get(key);
 
-      if (data) {
-        logger.info({ key }, "Redis cache hit");
-        return JSON.parse(data);
+        if (data) {
+          logger.info({ key }, "Redis cache hit");
+          return JSON.parse(data);
+        }
+
+        logger.info({ key }, "Redis cache miss");
+        return null;
       }
-
-      logger.info({ key }, "Redis cache miss");
-      return null;
     }
   } catch (err) {
     markRedisUnavailable(err);
@@ -204,12 +243,14 @@ export const getCache = async (key: string) => {
 
 export const deleteCache = async (key: string) => {
   try {
-    await connectRedis();
+    if (!isRedisTemporarilyDisabled()) {
+      await connectRedis();
 
-    if (isRedisConnected && redisClient) {
-      await redisClient.del(key);
-      logger.info({ key }, "Redis cache delete");
-      return;
+      if (isRedisConnected && redisClient) {
+        await redisClient.del(key);
+        logger.info({ key }, "Redis cache delete");
+        return;
+      }
     }
   } catch (err) {
     markRedisUnavailable(err);
@@ -220,27 +261,29 @@ export const deleteCache = async (key: string) => {
 
 export const deleteByPattern = async (pattern: string) => {
   try {
-    await connectRedis();
+    if (!isRedisTemporarilyDisabled()) {
+      await connectRedis();
 
-    if (isRedisConnected && redisClient) {
-      const stream = redisClient.scanStream({
-        match: pattern,
-        count: 100,
-      });
+      if (isRedisConnected && redisClient) {
+        const stream = redisClient.scanStream({
+          match: pattern,
+          count: 100,
+        });
 
-      let totalDeleted = 0;
+        let totalDeleted = 0;
 
-      for await (const keys of stream) {
-        if (keys.length > 0) {
-          const pipeline = redisClient.pipeline();
-          keys.forEach((key: string) => pipeline.del(key));
-          await pipeline.exec();
-          totalDeleted += keys.length;
+        for await (const keys of stream) {
+          if (keys.length > 0) {
+            const pipeline = redisClient.pipeline();
+            keys.forEach((key: string) => pipeline.del(key));
+            await pipeline.exec();
+            totalDeleted += keys.length;
+          }
         }
-      }
 
-      logger.info({ pattern, count: totalDeleted }, "Redis cache delete by pattern");
-      return;
+        logger.info({ pattern, count: totalDeleted }, "Redis cache delete by pattern");
+        return;
+      }
     }
   } catch (err) {
     markRedisUnavailable(err);
@@ -255,18 +298,20 @@ export const setCacheIfNotExists = async (
   ttl = 3600
 ) => {
   try {
-    await connectRedis();
+    if (!isRedisTemporarilyDisabled()) {
+      await connectRedis();
 
-    if (isRedisConnected && redisClient) {
-      const result = await redisClient.set(
-        key,
-        JSON.stringify(value),
-        "EX",
-        ttl,
-        "NX"
-      );
+      if (isRedisConnected && redisClient) {
+        const result = await redisClient.set(
+          key,
+          JSON.stringify(value),
+          "EX",
+          ttl,
+          "NX"
+        );
 
-      return result === "OK";
+        return result === "OK";
+      }
     }
   } catch (err) {
     markRedisUnavailable(err);
