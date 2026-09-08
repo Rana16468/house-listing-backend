@@ -15,7 +15,7 @@ const verifyToken = (token: string, secret: string): JwtPayload => {
 };
 
 const generateSubscriptionToken = (
-  payload: { startDate?: string, endDate?: string, isActive?: string, isPaymentVerif?:string,paymentStatus?:string },
+  payload: { id?:string, startDate?: string, endDate?: string, isActive?: string, isPaymentVerif?:string,paymentStatus?:string },
   secret: string,
   expiresIn: string | number = '1h' 
 ): string => {
