@@ -1,7 +1,7 @@
 export type QueryParams = Record<string, unknown>;
 
 export interface BuiltQuery {
-  where: Record<string, unknown>;
+  where: Record<string, any>; // unknown এর জায়গায় any দিন
   orderBy: Record<string, 'asc' | 'desc'>;
   skip: number;
   take: number;
@@ -61,8 +61,10 @@ export class QueryBuilder {
 }
 
 export const meta = (total: number, q: BuiltQuery) => ({
-  page: q.page,
-  limit: q.limit,
+  page: q.page || 1,
+  limit: q.limit || 10,
   total,
   totalPage: Math.ceil(total / q.limit),
 });
+
+

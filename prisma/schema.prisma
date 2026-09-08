@@ -103,6 +103,7 @@ model SubscriptionPlan {
   priceMonthly     Float
   isDeleted        Boolean            @default(false)
   users            UserSubscription[]
+  
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
 
@@ -116,7 +117,7 @@ model UserSubscription {
   
   planId        String           @db.VarChar(255)
   plan          SubscriptionPlan @relation(fields: [planId], references: [id])
-  
+  property         Property []
   startDate     DateTime         @default(now()) 
   endDate       DateTime
   isPaymentVerify  Boolean       @default(false)
@@ -132,15 +133,19 @@ model UserSubscription {
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 
+
   @@map("user_subscriptions")
   @@index([userId, planId, trxId, invoiceNo, paymentStatus, isActive, isDeleted, createdAt])
 }
 model Property {
   id          String   @id @default(uuid())
   landlordId  String
+  currentSubId String
   landlord    User     @relation(fields: [landlordId], references: [id], onDelete: Cascade)
-  title       String
-  address     String
+  userSubscriptionPlan   UserSubscription @relation(fields: [currentSubId], references: [id])
+  flatName    String     @db.VarChar(150)
+  Floor       Int       
+  address    String?   @db.VarChar(250)
   units       Unit[]
   isDeleted   Boolean  @default(false)
   createdAt   DateTime @default(now())

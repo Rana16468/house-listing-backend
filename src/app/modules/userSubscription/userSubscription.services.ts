@@ -326,6 +326,7 @@ const myActiveSubscriptionIntoDb = async (userId: string) => {
           isPaymentVerify: true,
           paymentStatus: PaymentStatus.PAID,
           isDeleted: false,
+         
         },
         orderBy: {
           updatedAt: "desc",
@@ -336,6 +337,7 @@ const myActiveSubscriptionIntoDb = async (userId: string) => {
           isActive: true,
           isPaymentVerify: true,
           paymentStatus: true,
+          id:true
         },
       });
 
@@ -354,7 +356,9 @@ const myActiveSubscriptionIntoDb = async (userId: string) => {
     const subscriptionToken = jwtHelpers.generateSubscriptionToken(
       activeSubscription as any,
       config.jwt_access_secret as string,
-      config.expires_in as string
+      config.expires_in as string,
+      
+      
     );
 
     return subscriptionToken;
