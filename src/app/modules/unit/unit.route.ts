@@ -26,6 +26,11 @@ router.patch("/update_unit/:id",
     auth(Role.LANDLORD),
     validationRequest(UnitValidation.updateUnitSchema),
     UnitController.updateUnit
+);
+
+router.delete("/delete_unit/:id", 
+    auth(Role.LANDLORD),
+    UnitController.hardDeleteUnit
 )
 
 const UnitRouter = router;

@@ -3,6 +3,7 @@ import catchAsync from "../../utils/asyncCatch";
 import UnitService from "./unit.services";
 import sendResponse from "../../utils/sendResponse";
 import status from "http-status";
+import { string } from "zod";
 
 
 const  recordedUnit:RequestHandler=catchAsync(async (req, res) => {
@@ -47,12 +48,24 @@ const updateUnit:RequestHandler=catchAsync(async(req , res)=>{
         message: "Successfully  Update",
         data: result,
     })
+});
+
+const hardDeleteUnit:RequestHandler=catchAsync(async(req , res)=>{
+
+     const result=await UnitService.hardDeleteUnitIntoDb(req.params.id as string, req.user.id);
+     sendResponse(res, {
+        success: true,
+        statusCode: status.OK,
+        message: "Successfully  Delete",
+        data: result,
+    })
 })
 
 const UnitController={
     recordedUnit,
     getAllUnitsFrom,
     findBySpecifcUnit,
-    updateUnit
+    updateUnit,
+    hardDeleteUnit
 };
 export default UnitController

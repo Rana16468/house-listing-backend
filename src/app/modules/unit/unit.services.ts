@@ -6,6 +6,39 @@ import { jwtHelpers } from "../../helper/jwtHelpers";
 import prisma from "../../shared/prisma";
 import { IUnit } from "./unit.interface";
 import httpStatus from 'http-status'
+import { getCache, setCache, deleteCache, deleteByPattern } from '../../redis/redis'; // adjust path to your redis.ts
+
+// ---- Cache key helpers -----------------------------------------------
+// Same convention as property.service.ts: one prefix, deterministic keys,
+// so invalidation can never miss a key that population actually wrote.
+const UNIT_CACHE_PREFIX = 'units';
+
+const unitByIdKey = (id: string) => `${UNIT_CACHE_PREFIX}:byId:${id}`;
+
+const unitListKey = (
+    landlordId: string,
+    currentSubId: string,
+    params: Record<string, unknown>
+) => {
+    const sortedParams = Object.keys(params)
+        .sort()
+        .reduce((acc, key) => {
+            acc[key] = params[key];
+            return acc;
+        }, {} as Record<string, unknown>);
+
+    return `${UNIT_CACHE_PREFIX}:list:${landlordId}:${currentSubId}:${JSON.stringify(sortedParams)}`;
+};
+
+// Matches every cached list page for a landlord regardless of subscription
+// or filters — used so ANY create/update/delete by that landlord can't
+// leave a stale page (wrong status, stale nested subUnits, wrong count)
+// sitting in cache.
+const unitListPatternForLandlord = (landlordId: string) =>
+    `${UNIT_CACHE_PREFIX}:list:${landlordId}:*`;
+
+const UNIT_LIST_TTL = 300;   // 5 min — lists change often (status flips, new units)
+const UNIT_BY_ID_TTL = 600;  // 10 min — a single unit record changes less often
 
 const recordedUnitIntoDb = async (userId: string, payload: IUnit) => {
 
@@ -52,6 +85,22 @@ const recordedUnitIntoDb = async (userId: string, payload: IUnit) => {
             },
         });
 
+        // Invalidate AFTER the DB write succeeds — a rollback/thrown error
+        // above never reaches this line, so we never clear cache for a
+        // create that didn't actually happen.
+        //
+        // 1. Every list page for this landlord is cleared — a new unit
+        //    changes counts, "some: unitWhere" matches, and nested
+        //    subUnits arrays for its parent property.
+        // 2. If this is a sub-unit, its parent's byId cache is cleared too,
+        //    since a parent record fetched again may expose subUnits
+        //    elsewhere in the future — safe to clear even if not currently
+        //    selected, costs nothing and prevents drift later.
+        await Promise.all([
+            deleteByPattern(unitListPatternForLandlord(userId)),
+            payload.parentUnitId ? deleteCache(unitByIdKey(payload.parentUnitId)) : Promise.resolve(),
+        ]);
+
         return result;
 
     }
@@ -73,6 +122,25 @@ const getAllUnitsFromDb = async (query: QueryParams, landlordId: string) => {
     const page = Number(query.page) || 1;
     const limit = Number(query.limit) || 10;
     const skip = (page - 1) * limit;
+
+    // Build the cache key from stable filter/paging values only (see note
+    // above on why currentSubToken itself is excluded).
+    const cacheKeyParams = {
+        page,
+        limit,
+        propertyId: query.propertyId ?? '',
+        status: query.status ?? '',
+        type: query.type ?? '',
+        baseRent: query.baseRent ?? '',
+        seats: query.seats ?? '',
+        searchTerm: query.searchTerm ?? '',
+    };
+    const cacheKey = unitListKey(landlordId, decoded.id, cacheKeyParams);
+
+    const cached = await getCache(cacheKey);
+    if (cached) {
+        return cached;
+    }
 
     // ১. ডাইরেক্ট প্রপার্টি লেভেল Dynamic Where Clause (Database-level)
     const propertyWhere: any = {
@@ -103,12 +171,12 @@ const getAllUnitsFromDb = async (query: QueryParams, landlordId: string) => {
         };
     }
 
-    // ৩. ডাটাবেজ কোয়েরি (Prisma Direct Hierarchy Query)
+    // ৩. ডাটাবেজ কোয়েরি (Prisma Direct Hierarchy Query)
     const [properties, totalProperties] = await Promise.all([
         prisma.property.findMany({
             where: {
                 ...propertyWhere,
-                // শুধুমাত্র যেসব প্রপার্টিতে ফিল্টার অনুযায়ী ইউনিট আছে সেগুলোই ফেচ করবে
+                // শুধুমাত্র যেসব প্রপার্টিতে ফিল্টার অনুযায়ী ইউনিট আছে সেগুলোই ফেচ করবে
                 units: {
                     some: unitWhere,
                 },
@@ -164,7 +232,7 @@ const getAllUnitsFromDb = async (query: QueryParams, landlordId: string) => {
         }),
     ]);
 
-    return {
+    const result = {
         meta: {
             page,
             limit,
@@ -173,13 +241,23 @@ const getAllUnitsFromDb = async (query: QueryParams, landlordId: string) => {
         },
         data: properties,
     };
+
+    await setCache(cacheKey, result, UNIT_LIST_TTL);
+
+    return result;
 };
 
 const findBySpecifcUnitIntoDb = async (id: string) => {
 
     try {
+        const cacheKey = unitByIdKey(id);
 
-        return await prisma.unit.findFirstOrThrow({
+        const cached = await getCache(cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        const result = await prisma.unit.findFirstOrThrow({
             where: {
                 id
             }, select: {
@@ -194,7 +272,9 @@ const findBySpecifcUnitIntoDb = async (id: string) => {
             }
         });
 
+        await setCache(cacheKey, result, UNIT_BY_ID_TTL);
 
+        return result;
     }
     catch (error) {
         throw catchError(error);
@@ -205,17 +285,19 @@ const updateUnitIntoDb = async (id: string, userId: string, payload: Partial<IUn
 
     try {
         const isUnitExist = await prisma.unit.findFirst({
-    where: {
-      id,
-      landlordId: userId,
-     
-    },
-    select: { id: true },
-  });
+            where: {
+                id,
+                landlordId: userId,
 
-  if (!isUnitExist) {
-    throw new AppError(httpStatus.NOT_FOUND, 'Unit not found or unauthorized access');
-  }
+            },
+            // parentUnitId is fetched too, so we know whether a parent's
+            // cache also needs to be invalidated after this update.
+            select: { id: true, parentUnitId: true },
+        });
+
+        if (!isUnitExist) {
+            throw new AppError(httpStatus.NOT_FOUND, 'Unit not found or unauthorized access');
+        }
 
         await prisma.unit.update({
             where: { id, landlordId: userId },
@@ -226,17 +308,99 @@ const updateUnitIntoDb = async (id: string, userId: string, payload: Partial<IUn
 
         })
 
+        // Invalidate AFTER the update resolves — never before, so a failed
+        // update (caught above and rethrown) never wipes a valid cache.
+        //
+        // 1. This unit's own byId cache — a direct GET by id must return
+        //    the new status/name/rent immediately, not the value cached
+        //    before this update.
+        // 2. Every list page for this landlord — status/type/rent changes
+        //    can move a unit in or out of filtered list results, and the
+        //    nested subUnits array embedded in property list responses
+        //    would otherwise still show the old values.
+        // 3. If this unit has (or had) a parentUnitId, the parent's own
+        //    byId cache is cleared too, in case the parent's payload ever
+        //    embeds subUnits.
+        // 4. If parentUnitId itself was CHANGED by this update (unit moved
+        //    to a different parent), both the old and new parent's caches
+        //    are cleared.
+        const newParentUnitId = payload.parentUnitId;
+        const parentIdsToInvalidate = new Set<string>();
+        if (isUnitExist.parentUnitId) parentIdsToInvalidate.add(isUnitExist.parentUnitId);
+        if (newParentUnitId) parentIdsToInvalidate.add(newParentUnitId);
+
+        await Promise.all([
+            deleteCache(unitByIdKey(id)),
+            deleteByPattern(unitListPatternForLandlord(userId)),
+            ...Array.from(parentIdsToInvalidate).map((parentId) => deleteCache(unitByIdKey(parentId))),
+        ]);
 
     }
     catch (error) {
         throw catchError(error);
     }
 }
+
+const hardDeleteUnitIntoDb = async (id: string, landlordId: string) => {
+
+    const isUnitExist = await prisma.unit.findFirst({
+        where: {
+            id,
+            landlordId,
+        },
+        // parentUnitId is needed to invalidate the parent's cache too.
+        select: { id: true, parentUnitId: true },
+    });
+
+    if (!isUnitExist) {
+        throw new AppError(httpStatus.NOT_FOUND, 'Unit not found or unauthorized access');
+    }
+
+    // Grab child unit ids BEFORE deleting them, purely so we know which
+    // byId cache keys to clear afterward — deleteMany doesn't return the
+    // rows it removed.
+    const childUnits = await prisma.unit.findMany({
+        where: { parentUnitId: id },
+        select: { id: true },
+    });
+
+    // ২. Transaction ব্যবহার করে মূল ইউনিট এবং তার নিচের সব Sub-Units স্থায়ীভাবে ডিলিট করা
+    const result = await prisma.$transaction(async (tx) => {
+        // ১ম ধাপ: চাইল্ড ইউনিটগুলো (Room/Seat) আগে ডিলিট করা (Foreign Key constraint এর জন্য)
+        await tx.unit.deleteMany({
+            where: { parentUnitId: id },
+        });
+
+        // ২য় ধাপ: মূল প্যারেন্ট ইউনিটটি (Flat/Room) ডিলিট করা
+        const deletedUnit = await tx.unit.delete({
+            where: { id },
+        });
+
+        return deletedUnit;
+    });
+
+    // Invalidate AFTER the transaction commits — if it throws, we never
+    // reach here and no cache is touched for a delete that didn't happen.
+    //
+    // A GET on a deleted unit's id must NOT return stale cached data —
+    // clearing the key means the next findFirstOrThrow correctly 404s
+    // instead of a stale getCache() hit resurrecting a deleted record.
+    const idsToInvalidate = [id, ...childUnits.map((u) => u.id)];
+    if (isUnitExist.parentUnitId) idsToInvalidate.push(isUnitExist.parentUnitId);
+
+    await Promise.all([
+        ...idsToInvalidate.map((unitId) => deleteCache(unitByIdKey(unitId))),
+        deleteByPattern(unitListPatternForLandlord(landlordId)),
+    ]);
+
+    return result;
+};
 const UnitService = {
     recordedUnitIntoDb,
     getAllUnitsFromDb,
     findBySpecifcUnitIntoDb,
-    updateUnitIntoDb
+    updateUnitIntoDb,
+    hardDeleteUnitIntoDb
 }
 
 export default UnitService
