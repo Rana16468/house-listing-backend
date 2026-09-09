@@ -5,6 +5,7 @@ import AuthRoutes from "../modules/auth/auth.route";
 import { SubscriptionPlanRoutes } from "../modules/subscriptionPlan/subscriptionPlan.route";
 import UserSubscriptionRoutes from "../modules/userSubscription/userSubscription.route";
 import { PropertyRoutes } from "../modules/property/property.route";
+import UnitRouter from "../modules/unit/unit.route";
 
 const router = express.Router();
 
@@ -31,6 +32,10 @@ const moduleRoutes = [
   }, {
     path:"/property",
     route: PropertyRoutes
+  },
+  {
+    path:"/unit",
+    route:  UnitRouter
   }
 ];
 

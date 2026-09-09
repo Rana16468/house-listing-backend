@@ -72,6 +72,7 @@ model User {
   isVerify     Boolean           @default(false)
   subscription  UserSubscription[]
   properties    Property[] 
+  unit          Unit[]
   photo      String?           // User Profile Photo
   isDeleted     Boolean           @default(false)
   createdAt     DateTime          @default(now())
@@ -118,6 +119,7 @@ model UserSubscription {
   planId        String           @db.VarChar(255)
   plan          SubscriptionPlan @relation(fields: [planId], references: [id])
   property         Property []
+  unit            Unit[]
   startDate     DateTime         @default(now()) 
   endDate       DateTime
   isPaymentVerify  Boolean       @default(false)
@@ -160,11 +162,16 @@ model Unit {
   parentUnitId String?     // Tree Hierarchy (Flat -> Room -> Seat)
   parentUnit   Unit?       @relation("UnitSubUnits", fields: [parentUnitId], references: [id])
   subUnits     Unit[]      @relation("UnitSubUnits")
-  name         String      // e.g. "Flat A-1", "Room-101", "Seat-A"
+  name         String      
+  seats        Int ?
   type         UnitType
   baseRent     Float
   status       UnitStatus  @default(VACANT)
   tenants      Tenant[]
+  landlordId  String
+  currentSubId String
+  landlord    User     @relation(fields: [landlordId], references: [id], onDelete: Cascade)
+  userSubscriptionPlan   UserSubscription @relation(fields: [currentSubId], references: [id])
   isDeleted    Boolean     @default(false)
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
