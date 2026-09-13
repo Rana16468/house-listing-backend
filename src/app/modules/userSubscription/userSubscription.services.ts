@@ -325,7 +325,9 @@ const myActiveSubscriptionIntoDb = async (userId: string) => {
           isActive: true,
           isPaymentVerify: true,
           paymentStatus: PaymentStatus.PAID,
-          isDeleted: false,
+         
+          
+          
          
         },
         orderBy: {
@@ -337,7 +339,8 @@ const myActiveSubscriptionIntoDb = async (userId: string) => {
           isActive: true,
           isPaymentVerify: true,
           paymentStatus: true,
-          id:true
+          id:true,
+           planId: true, 
         },
       });
 

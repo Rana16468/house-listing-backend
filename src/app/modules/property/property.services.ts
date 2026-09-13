@@ -5,86 +5,115 @@ import AppError from '../../errors/AppError';
 import status from 'http-status';
 import { QueryBuilder, QueryParams, meta } from '../../builder/QueryBuilder';
 import { getCache, setCache, deleteByPattern } from '../../redis/redis'; // আপনার Redis হেলপার ইম্পোর্ট
+import { jwtHelpers } from '../../helper/jwtHelpers';
+import config from '../../config';
 
 
-const createPropertyIntoDb = async (payload: Property, userId: string) => {
-    try {
-        const result = await prisma.$transaction(async (tx) => {
-            const subscription = await tx.userSubscription.findFirst({
-                where: {
-                    id: payload.currentSubId,
-                    userId,
-                },
-                select: {
-                    isActive: true,
-                    plan: {
-                        select: {
-                            flat: true,
-                        },
-                    },
-                },
-            });
+const createPropertyIntoDb = async (
+  payload: Property & { currentSubToken: string },
+  userId: string
+) => {
+  try {
+   
+    const {
+      currentSubToken,
+      landlordId,
+      id: propertyId, // যদি আইডি রিকোয়েস্ট পে লোডে এসে থাকে তবে তা রিমুভ করার জন্য
+      createdAt,
+      updatedAt,
+      ...propertyData
+    } = payload;
 
-            if (!subscription) {
-                throw new AppError(status.NOT_FOUND, 'Subscription not found');
-            }
+    // ২. JWT Verify করে Subscription ID বের করা
+    const verifiedToken = jwtHelpers.verifyToken(
+      currentSubToken,
+      config.jwt_access_secret as string
+    ) as { planId: string, id: string  };
 
-            if (!subscription.isActive) {
-                throw new AppError(
-                    status.FORBIDDEN,
-                    'Your subscription is inactive. Please renew to continue.'
-                );
-            }
+    const subscriptionId = verifiedToken.planId;
+    
+    // ৩. Prisma Transaction শুরু
+    const result = await prisma.$transaction(async (tx) => {
+      
+      const subscription = await tx.userSubscription.findFirst({
+        where: {
+          id:verifiedToken.id,
+          userId,
+        },
+        select: {
+          isActive: true,
+          plan: {
+            select: {
+              flat: true,
+            },
+          },
+        },
+      });
+     
 
-            const existingPropertiesCount = await tx.property.count({
-                where: {
-                    currentSubId: payload.currentSubId,
-                    landlordId: userId,
-                    isDeleted: false,
-                },
-            });
+      if (!subscription) {
+        throw new AppError(status.NOT_FOUND, 'Subscription not found');
+      }
 
-            const allowedFlats = subscription.plan.flat ?? 0;
+      if (!subscription.isActive) {
+        throw new AppError(
+          status.FORBIDDEN,
+          'Your subscription is inactive. Please renew to continue.'
+        );
+      }
 
-            if (existingPropertiesCount >= allowedFlats) {
-                throw new AppError(
-                    status.FORBIDDEN,
-                    'Subscription limit reached. Please upgrade or renew your plan.'
-                );
-            }
+      // বর্তমান প্রপার্টি সংখ্যা গণনা
+      const existingPropertiesCount = await tx.property.count({
+        where: {
+          currentSubId: subscriptionId,
+          landlordId: userId,
+         
+        },
+      });
 
-            const newProperty = await tx.property.create({
-                data: {
-                    ...payload,
-                    landlordId: userId,
-                },
-                // 🔗 Relation অন্তর্ভুক্ত করা হয়েছে
-                include: {
-                    landlord: {
-                        select: {
-                            id: true,
-                            name: true,
-                            email: true,
-                        },
-                    },
-                    userSubscriptionPlan: true,
-                },
-            });
+    
+      const allowedFlats = subscription.plan.flat ?? 0;
 
-            return newProperty;
-        });
+      if (existingPropertiesCount >= allowedFlats) {
+        throw new AppError(
+          status.FORBIDDEN,
+          'Subscription limit reached. Please upgrade or renew your plan.'
+        );
+      }
 
+      // ৪. নতুন প্রপার্টি তৈরি করা (Unchecked Input Pattern - Clean and Direct)
+      const newProperty = await tx.property.create({
+        data: {
+          ...propertyData,
+          landlordId: userId,
+          currentSubId: verifiedToken.id,
+        },
+        include: {
+          landlord: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          userSubscriptionPlan: true,
+        },
+      });
 
-        await deleteByPattern(`properties:${userId}:*`);
+      return newProperty;
+    });
 
-        return {
-            status: true,
-            message: 'Property created successfully',
-            data: result,
-        };
-    } catch (error) {
-        throw catchError(error, 'Error creating property');
-    }
+    // ৫. প্রপার্টি ক্যাশ ক্লিয়ার করা
+    await deleteByPattern(`properties:${userId}:*`);
+
+    return {
+      status: true,
+      message: 'Property created successfully',
+      data: result,
+    };
+  } catch (error) {
+    throw catchError(error, 'Error creating property');
+  }
 };
 
 

@@ -3,9 +3,9 @@ import { z } from 'zod';
  const createPropertySchema = z.object({
   body: z.object({
     
-    currentSubId: z.string({
-      error: 'Subscription ID is required',
-    }).uuid('Invalid Subscription ID format'),
+    currentSubToken: z.string({
+      error: 'Subscription Token is required',
+    }),
     flatName: z
       .string({ error: 'Flat name is required' })
       .max(150, 'Flat name cannot exceed 150 characters'),

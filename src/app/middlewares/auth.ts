@@ -11,32 +11,47 @@ import { getCache, setCache } from '../redis/redis';
 const AUTH_USER_CACHE_TTL = 30;
 const authUserCacheKey = (userId: string) => `auth:user:${userId}`;
 
-
 export interface AuthUser {
   id: string;
   role: Role;
-  phone: string;
+  email: string;
 }
 
-
-
- const auth = (...requiredRoles: Role[]) =>
+const auth = (...requiredRoles: Role[]) =>
   catchAsync(async (req: Request, _res: Response, next: NextFunction) => {
-   
-    const token = req.headers.authorization;
-    
+    const authHeader = req.headers.authorization?.trim();
 
-    if (!token) {
-      throw  new AppError(httpStatus.UNAUTHORIZED, 'Access token missing');
+    if (!authHeader) {
+      throw new AppError(httpStatus.UNAUTHORIZED, 'Access token missing');
     }
 
-    // 2. Verify token
+    const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/i);
+    const token = (bearerMatch ? bearerMatch[1] : authHeader).trim();
+    const tokenParts = token.split('.');
+
+    if (tokenParts.length !== 3 || tokenParts.some((part) => part.length === 0)) {
+      console.error('Invalid access token received:', {
+        tokenLength: token.length,
+        tokenPartCount: tokenParts.length,
+        hasTruncationMarker: token.includes('...'),
+      });
+      throw new AppError(httpStatus.UNAUTHORIZED, 'Invalid access token format');
+    }
+
+    if (!config.jwt_access_secret) {
+      throw new AppError(httpStatus.INTERNAL_SERVER_ERROR, 'JWT access secret is not configured');
+    }
+
     let decoded: JwtPayload;
     try {
-      decoded = jwt.verify(token, config.jwt_access_secret as string) as JwtPayload;
-    } catch {
-      
-      throw new AppError(httpStatus.NOT_FOUND, 'Invalid or expired token');
+      decoded = jwt.verify(token, config.jwt_access_secret) as JwtPayload;
+    } catch (err) {
+      console.error('JWT verification failed:', err instanceof Error ? err.message : err);
+      throw new AppError(httpStatus.UNAUTHORIZED, 'Invalid or expired token');
+    }
+
+    if (typeof decoded.id !== 'string' || decoded.id.length === 0) {
+      throw new AppError(httpStatus.UNAUTHORIZED, 'Invalid access token payload');
     }
 
     const userId = String(decoded.id);
@@ -44,7 +59,7 @@ export interface AuthUser {
 
     if (user === null) {
       user = await prisma.user.findUnique({
-        where: { id: userId, isDeleted: false,status: Status.ACTIVE, isVerify: true },
+        where: { id: userId, isDeleted: false, status: Status.ACTIVE, isVerify: true },
         select: { id: true, role: true, phone: true },
       });
 
@@ -57,14 +72,12 @@ export interface AuthUser {
       throw new AppError(httpStatus.NOT_FOUND, 'User no longer exists');
     }
 
-    // 4. Role Authorization Check
     if (requiredRoles.length > 0 && !requiredRoles.includes(user.role)) {
-      throw  new AppError(httpStatus.FORBIDDEN, 'You do not have permission for this action');
+      throw new AppError(httpStatus.FORBIDDEN, 'You do not have permission for this action');
     }
 
-    // 5. Attach verified user payload to express request
     req.user = { id: user.id, role: user.role, phone: user.phone };
-    
+
     next();
   });
 

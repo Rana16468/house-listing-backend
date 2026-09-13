@@ -65,7 +65,7 @@ const recordedUnitIntoDb = async (userId: string, payload: IUnit) => {
             }
         }
         const { id } = jwtHelpers.verifyToken(payload.currentSubToken, config.jwt_access_secret as string)
-        // ৩. ডাটাবেজে ইউনিট তৈরি করা
+
         const result = await prisma.unit.create({
             data: {
                 propertyId: payload.propertyId,
@@ -123,8 +123,6 @@ const getAllUnitsFromDb = async (query: QueryParams, landlordId: string) => {
     const limit = Number(query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    // Build the cache key from stable filter/paging values only (see note
-    // above on why currentSubToken itself is excluded).
     const cacheKeyParams = {
         page,
         limit,
@@ -142,51 +140,61 @@ const getAllUnitsFromDb = async (query: QueryParams, landlordId: string) => {
         return cached;
     }
 
-    // ১. ডাইরেক্ট প্রপার্টি লেভেল Dynamic Where Clause (Database-level)
+    // ১. প্রপার্টি লেভেল Where Clause
     const propertyWhere: any = {
-        isDeleted: false,
         landlordId: landlordId,
         currentSubId: decoded.id,
+        isDeleted: false, // 삭제된 Property বাদ দেওয়া ভালো
     };
 
     if (query.propertyId) {
         propertyWhere.id = query.propertyId as string;
     }
 
-    // ২. ইউনিট লেভেল Dynamic Where Clause (Nested Level Filter)
+    // ২. ইউনিট লেভেল Dynamic Where Clause
     const unitWhere: any = {
         isDeleted: false,
-        parentUnitId: null, // শুধুমাত্র Top-Level Units (Flat/Office)
+        parentUnitId: null,
     };
 
-    if (query.status) unitWhere.status = query.status;
-    if (query.type) unitWhere.type = query.type;
-    if (query.baseRent) unitWhere.baseRent = Number(query.baseRent);
-    if (query.seats) unitWhere.seats = Number(query.seats);
+    let hasUnitFilter = false; // কোনো ইউনিট ফিল্টার আছে কিনা ট্র্যাক রাখার জন্য
+
+    if (query.status) { unitWhere.status = query.status; hasUnitFilter = true; }
+    if (query.type) { unitWhere.type = query.type; hasUnitFilter = true; }
+    if (query.baseRent) { unitWhere.baseRent = Number(query.baseRent); hasUnitFilter = true; }
+    if (query.seats) { unitWhere.seats = Number(query.seats); hasUnitFilter = true; }
 
     if (query.searchTerm) {
         unitWhere.name = {
             contains: query.searchTerm as string,
             mode: 'insensitive',
         };
+        hasUnitFilter = true;
     }
 
-    // ৩. ডাটাবেজ কোয়েরি (Prisma Direct Hierarchy Query)
+    // ৩. Dynamic Main Where: ফিল্টার থাকলে তবেই 'units: { some: unitWhere }' অ্যাপ্লাই হবে
+    const mainWhere: any = {
+        ...propertyWhere,
+    };
+
+    if (hasUnitFilter) {
+        mainWhere.units = {
+            some: unitWhere,
+        };
+    }
+
+    // ৪. ডাটাবেজ কোয়েরি
     const [properties, totalProperties] = await Promise.all([
         prisma.property.findMany({
-            where: {
-                ...propertyWhere,
-                // শুধুমাত্র যেসব প্রপার্টিতে ফিল্টার অনুযায়ী ইউনিট আছে সেগুলোই ফেচ করবে
-                units: {
-                    some: unitWhere,
-                },
-            },
+            where: mainWhere,
             skip,
             take: limit,
+            orderBy: { createdAt: 'desc' },
             select: {
                 id: true,
                 flatName: true,
                 Floor: true,
+                address: true,
                 units: {
                     where: unitWhere,
                     orderBy: { createdAt: 'desc' },
@@ -223,12 +231,7 @@ const getAllUnitsFromDb = async (query: QueryParams, landlordId: string) => {
             },
         }),
         prisma.property.count({
-            where: {
-                ...propertyWhere,
-                units: {
-                    some: unitWhere,
-                },
-            },
+            where: mainWhere,
         }),
     ]);
 
