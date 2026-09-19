@@ -242,21 +242,18 @@ export const getCache = async (key: string) => {
 };
 
 export const deleteCache = async (key: string) => {
+  deleteMemoryCache(key); // সবসময় memory থেকেও মুছবে
   try {
     if (!isRedisTemporarilyDisabled()) {
       await connectRedis();
-
       if (isRedisConnected && redisClient) {
         await redisClient.del(key);
         logger.info({ key }, "Redis cache delete");
-        return;
       }
     }
   } catch (err) {
     markRedisUnavailable(err);
   }
-
-  deleteMemoryCache(key);
 };
 
 export const deleteByPattern = async (pattern: string) => {
