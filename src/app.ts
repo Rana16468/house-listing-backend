@@ -1,12 +1,13 @@
 import express, { Application, Request, Response } from "express";
 import cors from "cors";
-import config from "./app/config";
+import cron from "node-cron";
 import router from "./app/routes";
 import globalErrorHandler from "./app/middlewares/globalErrorHandler";
 import notFound from "./app/middlewares/notFound";
 import cookieParser from "cookie-parser";
 import monitorRouter, { recordRequestMetrics } from "./app/utils/metrics/metricsMiddleware";
 import systemArtc from "./app/utils/metrics/systemArtc";
+import autoDeleteAvailableFrom from "./app/utils/autoDeleteavailableFrom";
 
 const app: Application = express();
 
@@ -18,7 +19,7 @@ app.use(
       "http://localhost:5173",
       "http://localhost:3000",
     ],
-    credentials: true, 
+    credentials: true,
   })
 );
 
@@ -34,7 +35,9 @@ app.use("/api/v1/monitor", monitorRouter); // ← metrics endpoint
 app.get("/", (req: Request, res: Response) => {
   res.send(systemArtc());
 });
-
+cron.schedule("*/30 * * * *", async () => {
+  await autoDeleteAvailableFrom();
+});
 app.use(globalErrorHandler);
 
 app.use(notFound);
@@ -42,7 +45,7 @@ app.use(notFound);
 export default app;
 
 //docker build command 
-/* 
+/*
 1. docker-compose down
 2. docker-compose up --build -d
 3. docker-compose logs -f backend
