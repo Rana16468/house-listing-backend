@@ -19,8 +19,5 @@
     "type": "shell",
     "command": "npm run lint",
     "runOn": "folderOpen"
-  },
-  "[prisma]": {
-    "editor.defaultFormatter": "Prisma.prisma"
   }
 }
