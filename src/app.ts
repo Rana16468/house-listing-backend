@@ -31,7 +31,7 @@ app.use(recordRequestMetrics);
 
 // router setup
 app.use("/api/v1", router);
-app.use("/api/v1/monitor", monitorRouter); // ← metrics endpoint
+app.use("/api/v1/monitor", monitorRouter); 
 
 app.get("/", (req: Request, res: Response) => {
   res.send(systemArtc());

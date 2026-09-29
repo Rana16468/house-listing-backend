@@ -75,18 +75,18 @@ type ContactInfo {
 }
 
 model Post {
-  id              String      @id @default(auto()) @map("_id") @db.ObjectId
+  id              String           @id @default(auto()) @map("_id") @db.ObjectId
   title           String
   description     String
   category        RentalCategory
   tenantType      TenantType
-  parking         ParkingType @default(none)
+  parking         ParkingType      @default(none)
   address         String?
   liveLocationUrl String?
   images          String[]
   availableFrom   String
   pin             String
-  source          String      @default("user")
+  source          String           @default("user")
   deviceId        String
   // Embedded Structured Fields
   location        Location
@@ -96,16 +96,49 @@ model Post {
   browser         String?
   device          String?
   ipAddress       String?
-  isDelete        Boolean      @default(false)
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  isDelete        Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
-  
   @@index([category, tenantType, os, device, browser, deviceId])
-  @@index([location.division, location.district, location.thana, contact.phone, utilities.baseRent, availableFrom ])
+  @@index([location.division, location.district, location.thana, contact.phone, utilities.baseRent, availableFrom])
   @@index([createdAt(sort: Desc)])
   @@index([ipAddress])
   @@index([pin])
-
   @@map("posts")
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum Status {
+  ACTIVE
+  BLOCKED
+}
+
+model User {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  phone     String?
+  email     String?
+  photo     String?
+  status    Status   @default(ACTIVE)
+  role      Role     @default(USER)
+  os        String?
+  browser   String?
+  device    String?
+  ipAddress String?
+  isOnline  Boolean  @default(false)
+  isVerify  Boolean  @default(false)
+  isDeleted Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([phone, email, status, os, browser, device, isDeleted, isVerify, createdAt])
+  @@index([role])
+  @@index([ipAddress])
+  @@index([isDeleted, role])
+  @@map("users")
 }
