@@ -2,6 +2,7 @@ import express from "express";
 import { TestRoutes } from "../modules/testModule/test.route";
 import postRouter from "../modules/HouseListing/houseListing.route";
 import UserRoutes from "../modules/User/user.route";
+import listRoomRouter from "../modules/ListRoom/listRoom.route";
 
 
 const router = express.Router();
@@ -19,6 +20,10 @@ const moduleRoutes = [
   {
     path:"/user",
     route:UserRoutes
+  },
+  {
+    path:"/room_list",
+    route: listRoomRouter
   }
 
 ];

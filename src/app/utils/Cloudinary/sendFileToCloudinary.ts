@@ -2,7 +2,9 @@ import { UploadApiResponse, v2 as cloudinary } from "cloudinary";
 import fs from "fs";
 import path from "path";
 import config from "../../config";
-
+import streamifier from 'streamifier'
+import AppError from "../../errors/AppError";
+import status from "http-status";
 cloudinary.config({
   cloud_name: config.cloudinary.cloud_name,
   api_key: config.cloudinary.api_key,
@@ -43,27 +45,74 @@ export const sendFileToCloudinary = (
   });
 };
 
+/**
+ * Single File Stream Upload to Cloudinary
+ */
+const uploadSingleBufferToCloudinary = (
+  fileBuffer: Buffer,
+  folderName: string = 'room-photos'
+): Promise<UploadApiResponse> => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        folder: folderName,
+        resource_type: 'image',
+        // অপশনাল: পারফরম্যান্স ও লোডিং স্পিড বাড়াতে অটো ফর্মেটিং ও কম্প্রেশন
+        transformation: [
+          { quality: 'auto', fetch_format: 'auto' }
+        ]
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        if (!result) return reject(new Error('Cloudinary upload failed'));
+        resolve(result);
+      }
+    );
+
+    // Buffer stream এ কনভার্ট করে পাঠানোর ব্যবস্থা
+    streamifier.createReadStream(fileBuffer).pipe(uploadStream);
+  });
+};
+
 
 export const sendMultipleFilesToCloudinary = async (
   filePaths: string[],
-  folderName: string = "user-files"
+  folderName: string = 'room-listings'
 ): Promise<string[]> => {
   try {
-    const uploadPromises = filePaths.map((filePath, index) => {
-      const fileName = `file_${Date.now()}_${index + 1}`;
-      return sendFileToCloudinary(fileName, filePath);
-    });
+    if (!filePaths || filePaths.length === 0) return [];
 
+    // সমান্তরালভাবে (Parallel) আপলোডের ব্যবস্থা
+    const uploadPromises = filePaths.map((filePath) =>
+      cloudinary.uploader.upload(filePath, {
+        folder: folderName,
+        resource_type: 'image',
+        transformation: [{ quality: 'auto', fetch_format: 'auto' }],
+      })
+    );
 
-    const results = await Promise.all(uploadPromises);
+    const uploadResults = await Promise.all(uploadPromises);
 
-    return results.map((result) => result.secure_url);
-  } catch (error) {
+    // আপলোড শেষে লোকাল ফাইল মুছে দেওয়া (Cleanup)
     filePaths.forEach((filePath) => {
       if (fs.existsSync(filePath)) {
         fs.unlink(filePath, () => {});
       }
     });
-    throw error;
+
+    return uploadResults.map((result) => result.secure_url);
+  } catch (error) {
+    // এরর হলেও টেম্পোরারি লোকাল ফাইলগুলো মুছে দেওয়া
+    filePaths.forEach((filePath) => {
+      if (fs.existsSync(filePath)) {
+        fs.unlink(filePath, () => {});
+      }
+    });
+
+    throw new AppError(
+      status.INTERNAL_SERVER_ERROR,
+      'Failed to upload images to Cloudinary'
+    );
   }
 };
+

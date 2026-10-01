@@ -135,10 +135,70 @@ model User {
   isDeleted Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  rooms     ListRoom[]
 
   @@index([phone, email, status, os, browser, device, isDeleted, isVerify, createdAt])
   @@index([role])
   @@index([ipAddress])
   @@index([isDeleted, role])
   @@map("users")
+}
+
+enum PropertyCategory {
+  House
+  Flat
+  Sublet
+  SingleRoom  
+  OfficeSpace 
+}
+
+enum WaterBill {
+  Included
+  Separate
+  Optional
+}
+
+enum GasSupply {
+  LineGas  
+  Cylinder
+}
+
+enum ParkingSpace {
+  Available
+  NotAvailable  
+  NotSpecified 
+}
+
+model ListRoom {
+  id            String           @id @default(auto()) @map("_id") @db.ObjectId
+  address       String
+  availableFrom DateTime
+  category      PropertyCategory
+  contactNumber String
+  description   String
+  gasSupply     GasSupply?
+  location      String
+  parkingSpace  ParkingSpace     @default(NotSpecified)
+  photos        String[]
+  rent          Int
+  serviceCharge Int?
+  waterBill     WaterBill        @default(Optional)
+  isDeleted     Boolean          @default(false)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  userId        String           @db.ObjectId
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // ---------------- INDEXES ---------------- //
+  @@index([userId]) // নির্দিষ্ট ইউজারের সব লিস্টিং (My Posts) দ্রুত লোড করার জন্য
+  @@index([location])
+  @@index([availableFrom])
+  @@index([category])
+  @@index([rent])
+  @@index([location, category])
+  @@index([location, rent])
+  @@index([createdAt(sort: Desc)])
+  @@index([address, isDeleted])
+
+  @@map("list_rooms")
 }
