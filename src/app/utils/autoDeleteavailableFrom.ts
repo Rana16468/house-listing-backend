@@ -1,6 +1,8 @@
 import { prisma } from "../../prisma";
 import catchError from "../errors/catchError";
 import deleteFileFromCloudinary from "./Cloudinary/deleteFileFromCloudinary";
+import { logger } from "../redis/logger";
+import { invalidateCacheDomains } from "../redis/cache";
 
 const BATCH_SIZE = 50;
 
@@ -12,12 +14,9 @@ const safeDeleteCloudinaryImages = async (images: string[]): Promise<void> => {
     images.map((url) => deleteFileFromCloudinary(url))
   );
 
-  results.forEach((result, idx) => {
+  results.forEach((result) => {
     if (result.status === "rejected") {
-      console.error(
-        `[Cloudinary Cleanup Failed] Image URL: ${images[idx]} | Reason:`,
-        result.reason
-      );
+      logger.warn({ err: result.reason }, 'Cloudinary cleanup failed');
     }
   });
 };
@@ -37,6 +36,7 @@ const autoDeleteAvailableFrom = async () => {
       return { success: true, processedCount: 0 };
     }
 
+    await invalidateCacheDomains("posts");
     let processedTotal = 0;
 
     while (processedTotal < expiredCount) {
@@ -71,6 +71,7 @@ const autoDeleteAvailableFrom = async () => {
           updatedAt: new Date(),
         },
       });
+      await invalidateCacheDomains("posts");
 
       processedTotal += expiredPosts.length;
     }

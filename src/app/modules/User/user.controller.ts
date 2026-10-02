@@ -6,26 +6,26 @@ import httpStatus from "http-status";
 import config from "../../config";
 import UserService from "./user.services";
 
-const createUser:RequestHandler = catchAsync(async (req, res) => {
-    
+const createUser: RequestHandler = catchAsync(async (req, res) => {
+
     const result = await UserService.createUserIntoDb(req.body);
-   const { refreshToken, accessToken } = result;
-  res.cookie("refreshToken", refreshToken, {
-    secure: config.NODE_ENV === "production",
-    httpOnly: true,
-  });
-  sendResponse(res, {
-    success: true,
-    statusCode: httpStatus.OK,
-    message: "Successfully Login",
-    data: {
-      accessToken,
-      refreshToken
-    },
-  });
+    const { refreshToken, accessToken } = result;
+    res.cookie("refreshToken", refreshToken, {
+        secure: config.NODE_ENV === "production",
+        httpOnly: true,
+    });
+    sendResponse(res, {
+        success: true,
+        statusCode: httpStatus.OK,
+        message: "Successfully Login",
+        data: {
+            accessToken,
+            refreshToken
+        },
+    });
 });
 
-const createAccount:RequestHandler = catchAsync(async (req, res) => {
+const createAccount: RequestHandler = catchAsync(async (req, res) => {
     const result = await UserService.createAccountIntoDb(req.body);
     sendResponse(res, {
         statusCode: httpStatus.CREATED,
@@ -46,10 +46,21 @@ const changeProfilePicture: RequestHandler = catchAsync(async (req, res) => {
     });
 });
 
+const findMyProfile: RequestHandler = catchAsync(async (req, res) => {
+    const result = await UserService.findMyProfileIntoDb(req.user.id);
+    sendResponse(res, {
+        statusCode: httpStatus.OK,
+        success: true,
+        message: "Successfully fetched user profile",
+        data: result,
+    });
+});
+
 
 const UserController = {
     createUser,
     createAccount,
-    changeProfilePicture
+    changeProfilePicture,
+    findMyProfile
 };
 export default UserController;

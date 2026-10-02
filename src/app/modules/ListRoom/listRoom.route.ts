@@ -76,11 +76,13 @@ router.post(
     validationRequest(ListRoomValidation.createRoomListingValidationSchema),
     ListRoomController.createRoomListing
 );
+router.get("/my-listings", auth(Role.USER), ListRoomController.findMyHouseListings);
 router.get("/", ListRoomController.findByAllList);
 router.get("/:id", auth(Role.USER, Role.ADMIN), ListRoomController.findBySpecificRoomList)
 router.delete("/:id",
     auth(Role.USER, Role.ADMIN),
     ListRoomController.deleteListRoom
-)
+);
+
 const listRoomRouter = router;
 export default listRoomRouter;

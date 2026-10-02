@@ -606,7 +606,7 @@ const systemArtc = () => {
                     return;
                 }
                 render(await res.json());
-            } catch (err) {
+            } catch {
                 console.error('Failed to fetch diagnostics:', err);
                 setStatus('bad', 'Cannot reach the server. Reload the page to retry.');
             }

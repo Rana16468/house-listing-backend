@@ -47,11 +47,22 @@ const deleteListRoom:RequestHandler=catchAsync(async(req , res)=>{
         message: "Successfully Delete Specifc Room List",
         data: result,
     })
-})
+});
+
+const findMyHouseListings:RequestHandler=catchAsync(async(req , res)=>{
+     const result=await ListRoomService.findMyHouseListingsIntoDb(req.user.id, req.query);
+      sendResponse(res, {
+        success: true,
+        statusCode: status.OK,
+        message: "Successfully Find My House Listings",
+        data: result,
+    })
+});
 const ListRoomController={
     createRoomListing,
     findByAllList,
     findBySpecificRoomList,
-    deleteListRoom
+    deleteListRoom,
+    findMyHouseListings
 };
 export default ListRoomController

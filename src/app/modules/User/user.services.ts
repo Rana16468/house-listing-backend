@@ -10,13 +10,14 @@ import { sendFileToCloudinary } from "../../utils/Cloudinary/sendFileToCloudinar
 import deleteFileFromCloudinary from "../../utils/Cloudinary/deleteFileFromCloudinary";
 import fs from 'fs';
 import catchError from "../../errors/catchError";
+import { cacheAside, invalidateCacheDomains } from "../../redis/cache";
+import { cacheKeys, cacheTtlSeconds } from "../../redis/cacheKeys";
 
 const createUserIntoDb = async (payload: TUser) => {
 
 
 
-
-    return await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
         // 1. Check if user exists (including soft-deleted & blocked checks)
         const existingUser = await tx.user.findFirst({
             where: {
@@ -51,6 +52,7 @@ const createUserIntoDb = async (payload: TUser) => {
         let user;
 
         // 3. Perform Upsert/Creation with clean logic
+        await invalidateCacheDomains("users", "rooms", "saved-rooms");
         if (!existingUser) {
             user = await tx.user.create({
                 data: {
@@ -102,6 +104,9 @@ const createUserIntoDb = async (payload: TUser) => {
             refreshToken,
         };
     });
+
+    await invalidateCacheDomains("users", "rooms", "saved-rooms");
+    return result;
 };
 
 const createAccountIntoDb = async (payload: TUser) => {
@@ -163,6 +168,7 @@ const createAccountIntoDb = async (payload: TUser) => {
 
     let user;
 
+    await invalidateCacheDomains("users", "rooms", "saved-rooms");
     if (existingUser) {
         user = await prisma.user.update({
             where: { id: existingUser.id },
@@ -173,6 +179,7 @@ const createAccountIntoDb = async (payload: TUser) => {
             data: userData,
         });
     }
+    await invalidateCacheDomains("users", "rooms", "saved-rooms");
 
     // 7. Generate JWT Payload
     const jwtPayload = {
@@ -251,6 +258,7 @@ const changeProfilePictureIntoDB = async (
                 );
             }
         }
+        await invalidateCacheDomains("users", "rooms", "saved-rooms");
         const updatedUser = await prisma.user.update({
             where: { id: userId },
             data: updateData,
@@ -265,6 +273,7 @@ const changeProfilePictureIntoDB = async (
                 updatedAt: true,
             },
         });
+        await invalidateCacheDomains("users", "rooms", "saved-rooms");
 
         return updatedUser && {
             status: true,
@@ -275,10 +284,48 @@ const changeProfilePictureIntoDB = async (
     }
 };
 
+const findMyProfileIntoDb = async (userId: string) => {
+
+    try {
+
+
+        const result = await cacheAside(
+            "users",
+            cacheKeys.users.profile(userId),
+            cacheTtlSeconds.profile,
+            () => prisma.user.findUnique({
+                where: { id: userId },
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    photo: true,
+                    role: true,
+                    status: true,
+                    isVerify: true,
+                    browser: true,
+                    os: true,
+                    device: true,
+                    createdAt: true
+                }
+            })
+        );
+
+        return result
+
+
+    }
+
+    catch (error) {
+        throw catchError(error, 'Failed to update profile');
+    }
+}
+
 const UserService = {
     createUserIntoDb,
     createAccountIntoDb,
-    changeProfilePictureIntoDB
+    changeProfilePictureIntoDB,
+    findMyProfileIntoDb
 };
 
 export default UserService;

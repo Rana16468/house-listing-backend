@@ -14,6 +14,8 @@ type MemoryCacheEntry = {
 };
 
 const memoryCache = new Map<string, MemoryCacheEntry>();
+const memoryCacheVersions = new Map<string, number>();
+const pendingCacheVersionBumps = new Map<string, number>();
 
 // Base backoff window + exponential growth, capped, so a dead Redis host
 // doesn't force every single request to eat a full connect/handshake
@@ -80,7 +82,10 @@ const deleteMemoryCache = (key: string) => {
 };
 
 const deleteMemoryCacheByPattern = (pattern: string) => {
-  const regex = new RegExp(`^${pattern.replace(/\*/g, ".*")}$`);
+  const escapedPattern = pattern
+    .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, ".*");
+  const regex = new RegExp(`^${escapedPattern}$`);
   for (const key of memoryCache.keys()) {
     if (regex.test(key)) {
       memoryCache.delete(key);
@@ -130,6 +135,11 @@ export function getRedisClient(): RedisType {
 
   redisClient.on("ready", () => {
     logger.info("Redis ready");
+    ["posts", "rooms", "saved-rooms", "users"].forEach((namespace) => {
+      redisClient
+        ?.incr(`cache:v1:revision:${namespace}`)
+        .catch((err) => markRedisUnavailable(err));
+    });
     markRedisAvailable();
     redisFailureLogged = false;
   });
@@ -197,6 +207,59 @@ export async function disconnectRedis(): Promise<void> {
   } catch (err) {
     logger.error({ err }, "Redis disconnect error");
   }
+}
+
+export async function getCacheVersion(namespace: string): Promise<string> {
+  const versionKey = `cache:v1:revision:${namespace}`;
+
+  try {
+    if (!isRedisTemporarilyDisabled()) {
+      await connectRedis();
+      if (isRedisConnected && redisClient) {
+        const pendingBumps = pendingCacheVersionBumps.get(namespace) ?? 0;
+        const version = pendingBumps
+          ? await redisClient.incrby(versionKey, pendingBumps)
+          : Number((await redisClient.get(versionKey)) ?? 0);
+        pendingCacheVersionBumps.delete(namespace);
+        memoryCacheVersions.set(namespace, version);
+        return String(version);
+      }
+    }
+  } catch (err) {
+    markRedisUnavailable(err);
+  }
+
+  return String(memoryCacheVersions.get(namespace) ?? 0);
+}
+
+export async function incrementCacheVersion(namespace: string): Promise<void> {
+  const versionKey = `cache:v1:revision:${namespace}`;
+
+  try {
+    if (!isRedisTemporarilyDisabled()) {
+      await connectRedis();
+      if (isRedisConnected && redisClient) {
+        const pendingBumps = pendingCacheVersionBumps.get(namespace) ?? 0;
+        const version = await redisClient.incrby(versionKey, pendingBumps + 1);
+        pendingCacheVersionBumps.delete(namespace);
+        memoryCacheVersions.set(namespace, version);
+        deleteMemoryCacheByPattern(`cache:v1:${namespace}:*`);
+        return;
+      }
+    }
+  } catch (err) {
+    markRedisUnavailable(err);
+  }
+
+  memoryCacheVersions.set(
+    namespace,
+    (memoryCacheVersions.get(namespace) ?? 0) + 1
+  );
+  pendingCacheVersionBumps.set(
+    namespace,
+    (pendingCacheVersionBumps.get(namespace) ?? 0) + 1
+  );
+  deleteMemoryCacheByPattern(`cache:v1:${namespace}:*`);
 }
 
 export const setCache = async (key: string, value: unknown, ttl = 3600) => {

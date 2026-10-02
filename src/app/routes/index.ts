@@ -3,6 +3,7 @@ import { TestRoutes } from "../modules/testModule/test.route";
 import postRouter from "../modules/HouseListing/houseListing.route";
 import UserRoutes from "../modules/User/user.route";
 import listRoomRouter from "../modules/ListRoom/listRoom.route";
+import SaveRoomRoute from "../modules/SaveRoom/saveRoom.route";
 
 
 const router = express.Router();
@@ -24,6 +25,10 @@ const moduleRoutes = [
   {
     path:"/room_list",
     route: listRoomRouter
+  },
+  {
+    path:"/save_room",
+    route: SaveRoomRoute
   }
 
 ];

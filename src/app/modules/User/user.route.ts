@@ -54,6 +54,11 @@ router.patch('/change-profile-picture',
     UserController.changeProfilePicture
 );
 
+router.get('/my-profile',
+    auth(Role.ADMIN, Role.USER),
+    UserController.findMyProfile
+);
+
 
 const UserRoutes = router;
 export default UserRoutes;

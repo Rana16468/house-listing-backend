@@ -136,6 +136,7 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   rooms     ListRoom[]
+  saveRoom   SaveRoom[]
 
   @@index([phone, email, status, os, browser, device, isDeleted, isVerify, createdAt])
   @@index([role])
@@ -188,7 +189,7 @@ model ListRoom {
   updatedAt     DateTime         @updatedAt
   userId        String           @db.ObjectId
   user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-
+  saveRoom   SaveRoom[]
   // ---------------- INDEXES ---------------- //
   @@index([userId]) // নির্দিষ্ট ইউজারের সব লিস্টিং (My Posts) দ্রুত লোড করার জন্য
   @@index([location])
@@ -201,4 +202,19 @@ model ListRoom {
   @@index([address, isDeleted])
 
   @@map("list_rooms")
+}
+
+model SaveRoom {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  listRoomId String  @db.ObjectId
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listRoom  ListRoom @relation(fields: [listRoomId], references: [id], onDelete: Cascade)
+ isDeleted Boolean  @default(false)
+  @@unique([userId, listRoomId]) 
+  @@index([userId])
+  @@index([listRoomId, isDeleted])
+  @@map("saved_rooms")
 }

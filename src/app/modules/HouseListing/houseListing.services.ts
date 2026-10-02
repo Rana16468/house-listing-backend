@@ -1,5 +1,4 @@
 import httpStatus from 'http-status';
-import { createHash } from 'crypto';
 import { Post, Prisma, RentalCategory, TenantType } from "@prisma/client";
 import argon2 from 'argon2';
 import { prisma } from "../../../prisma";
@@ -12,100 +11,16 @@ import { meta, QueryBuilder, QueryParams } from '../../builder/QueryBuilder';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import deleteFileFromCloudinary from '../../utils/Cloudinary/deleteFileFromCloudinary';
 // ⚠️ পাথটা আপনার Redis cache ফাইলের আসল লোকেশন অনুযায়ী ঠিক করে নিন
-import { getCache, setCache, deleteCache, deleteByPattern } from '../../redis/redis';
-
-/* -------------------------------------------------------------------------- */
-/*  Cache config & helpers                                                    */
-/* -------------------------------------------------------------------------- */
-
-/**
- * TTL এখানে "সেফটি নেট"। আসল আপডেট হয় write (create/delete) হওয়ার সাথে সাথেই
- * invalidate করে। তাই TTL ছোট রাখা নিরাপদ।
- */
-const CACHE_TTL = {
-    detail: 300,  // single post
-    list: 60,     // public listing (filter/search/pagination)
-    my: 60,       // device-wise "my listings"
-    regions: 120, // division > district > thana aggregation
-} as const;
-
-const shortHash = (value: string) =>
-    createHash('sha1').update(value).digest('hex').slice(0, 16);
-
-/** key order যাই হোক, একই query থেকে সবসময় একই string তৈরি হবে */
-const stableStringify = (obj: Record<string, unknown>) =>
-    JSON.stringify(Object.keys(obj).sort().map((key) => [key, obj[key]]));
-
-/**
- * deviceId-কে hash করা হয়েছে যাতে key-তে কোনো special character
- * (যেমন * ? [ ]) থাকলে Redis pattern match গুলিয়ে না যায়।
- */
-const CACHE_KEYS = {
-    detail: (id: string) => `post:detail:${id}`,
-    listPrefix: 'post:list:',
-    list: (hash: string) => `post:list:${hash}`,
-    myPrefix: (deviceId: string) => `post:my:${shortHash(deviceId)}:`,
-    my: (deviceId: string, hash: string) => `post:my:${shortHash(deviceId)}:${hash}`,
-    regions: 'post:regions',
-};
-
-/**
- * Cache-aside helper: আগে cache দেখবে, না পেলে DB থেকে এনে cache-এ রাখবে।
- * Cache-এ সমস্যা হলেও request ফেল করবে না, সরাসরি DB থেকে ডাটা দেবে।
- * null/undefined ফলাফল cache করা হয় না।
- */
-const withCache = async <T>(
-    key: string,
-    ttl: number,
-    loader: () => Promise<T>
-): Promise<T> => {
-    try {
-        const cached = await getCache(key);
-        if (cached !== null && cached !== undefined) return cached as T;
-    } catch (err) {
-        console.error('Cache read failed, falling back to DB:', err);
-    }
-
-    const fresh = await loader();
-
-    if (fresh !== null && fresh !== undefined) {
-        try {
-            await setCache(key, fresh, ttl);
-        } catch (err) {
-            console.error('Cache write failed:', err);
-        }
-    }
-
-    return fresh;
-};
+import { cacheAside } from '../../redis/cache';
+import { cacheKeys, cacheTtlSeconds } from '../../redis/cacheKeys';
+import { incrementCacheVersion } from '../../redis/redis';
 
 /**
  * কোনো post create/update/delete হলে DB write সফল হওয়ার পর এটা কল করতে হবে।
  * এটা await করা হয়, তাই response ফেরার আগেই পুরোনো cache মুছে যায়
  * এবং পরের GET সরাসরি নতুন ডাটা পায়।
  */
-const invalidatePostCache = async ({
-    deviceId,
-    id,
-}: {
-    deviceId?: string | null;
-    id?: string;
-}) => {
-    const tasks: Promise<unknown>[] = [
-        deleteByPattern(`${CACHE_KEYS.listPrefix}*`), // সব public list
-        deleteCache(CACHE_KEYS.regions),              // region count
-    ];
-
-    if (deviceId) tasks.push(deleteByPattern(`${CACHE_KEYS.myPrefix(deviceId)}*`));
-    if (id) tasks.push(deleteCache(CACHE_KEYS.detail(id)));
-
-    const results = await Promise.allSettled(tasks);
-    results.forEach((result) => {
-        if (result.status === 'rejected') {
-            console.error('Cache invalidation failed:', result.reason);
-        }
-    });
-};
+const invalidatePostCache = async () => incrementCacheVersion('posts');
 
 /* -------------------------------------------------------------------------- */
 /*  Create                                                                    */
@@ -147,14 +62,14 @@ const houseListingIntoDb = async (payload: Post) => {
             const uploadedUrls = await sendMultipleFilesToCloudinary(payload.images, "house-listings");
             payload.images = uploadedUrls;
         }
+        await invalidatePostCache();
         const result = await prisma.post.create({
             data: payload,
         }).catch((error) => {
             throw new AppError(httpStatus.INTERNAL_SERVER_ERROR, 'Failed to create post record', error);
         })
 
-        // ✅ নতুন পোস্ট তৈরি হয়েছে → list, my-listing ও region count এর cache মুছে ফেলো
-        await invalidatePostCache({ deviceId: payload.deviceId, id: result.id });
+        await invalidatePostCache();
 
         return {
             status: true,
@@ -336,9 +251,7 @@ const findByHouseListDb = async (query: IFilterQuery) => {
 
         // ---- Cache key: sanitise করা ভ্যালু থেকে, যাতে "Dhaka" / "dhaka " / "null"
         //      এর মতো আলাদা raw input থেকেও একই key তৈরি হয় ----------------------
-        const cacheKey = CACHE_KEYS.list(
-            shortHash(
-                stableStringify({
+        const cacheKey = cacheKeys.posts.list({
                     searchTerm,
                     division,
                     district,
@@ -354,12 +267,10 @@ const findByHouseListDb = async (query: IFilterQuery) => {
                     limitNumber,
                     sortBy,
                     sortOrder,
-                }),
-            ),
-        );
+                });
 
         // ---- Query (cached) -------------------------------------------------
-        return await withCache(cacheKey, CACHE_TTL.list, async () => {
+        return await cacheAside('posts', cacheKey, cacheTtlSeconds.list, async () => {
             const [result, total] = await Promise.all([
                 prisma.post.findMany({
                     where,
@@ -410,7 +321,7 @@ const findBySpecifcHouseInfoIntoDb = async (id: string) => {
 
     try {
 
-        return await withCache(CACHE_KEYS.detail(id), CACHE_TTL.detail, () =>
+        return await cacheAside('posts', cacheKeys.posts.detail(id), cacheTtlSeconds.detail, () =>
             prisma.post.findFirst({
                 where: {
                     id: id,
@@ -470,12 +381,9 @@ const findMyHouseListingIntoDb = async (
     try {
 
         // deviceId + পুরো query মিলিয়ে key → এক ডিভাইসের cache আরেক ডিভাইসে মিশবে না
-        const cacheKey = CACHE_KEYS.my(
-            deviceId,
-            shortHash(stableStringify(query as Record<string, unknown>))
-        );
+        const cacheKey = cacheKeys.posts.byDevice(deviceId, query);
 
-        return await withCache(cacheKey, CACHE_TTL.my, async () => {
+        return await cacheAside('posts', cacheKey, cacheTtlSeconds.list, async () => {
             const queryBuilder = new QueryBuilder(query)
                 .search(['title', 'description', 'address'])
                 .filter(['category', 'tenantType'])
@@ -537,6 +445,7 @@ const softDeleteMyHouseListingIntoDb = async (
             throw new Error("Listing not found or unauthorized device access.");
         }
 
+        await invalidatePostCache();
         const result = await prisma.post.updateMany({
             where: {
                 id,
@@ -552,8 +461,7 @@ const softDeleteMyHouseListingIntoDb = async (
             throw new Error("Listing already deleted or updated by another request.");
         }
 
-        // ✅ DB আপডেট সফল → detail, সব list, my-listing ও region count এর cache মুছে ফেলো
-        await invalidatePostCache({ deviceId, id });
+        await invalidatePostCache();
 
         // DB আপডেট সফল হওয়ার পরই Cloudinary থেকে ছবি মুছবে (background)
         if (houseListing.images && houseListing.images.length > 0) {
@@ -584,7 +492,7 @@ const softDeleteMyHouseListingIntoDb = async (
 
 const liveReasigonRequiringAttentionIntoDb = async () => {
     try {
-        return await withCache(CACHE_KEYS.regions, CACHE_TTL.regions, () =>
+        return await cacheAside('posts', cacheKeys.posts.regions(), cacheTtlSeconds.aggregate, () =>
             prisma.post.aggregateRaw({
                 pipeline: [
                     // ১. null/undefined বা খালি লোকেশন এবং ডিলিট হওয়া পোস্ট বাদ দিয়ে শুধু ভ্যালিড ডাটা প্রসেস করা (Performance Boost)

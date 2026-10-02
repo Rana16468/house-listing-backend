@@ -10,7 +10,6 @@ import {
 } from '@prisma/client/runtime/library';
 import { TErrorSources } from '../interface/error';
 import AppError from '../errors/AppError';
-import config from '../config';
 import logError from './logError';
 
 const globalErrorHandler: ErrorRequestHandler = (err, req, res, next) => {
@@ -34,15 +33,15 @@ const globalErrorHandler: ErrorRequestHandler = (err, req, res, next) => {
     }));
   } else if (err instanceof PrismaClientValidationError) {
     statusCode = httpStatus.BAD_REQUEST;
-    message = 'Validation Error';
+    message = 'Invalid request data';
     errorSources = [
       {
         path: '',
-        message: err.message.split('\n').pop() || 'Prisma validation error',
+        message: 'Please check the submitted information and try again.',
       },
     ];
   } else if (err instanceof PrismaClientKnownRequestError) {
-    statusCode = httpStatus.BAD_REQUEST;
+    statusCode = httpStatus.INTERNAL_SERVER_ERROR;
 
     switch (err.code) {
       case 'P2002': {
@@ -62,7 +61,7 @@ const globalErrorHandler: ErrorRequestHandler = (err, req, res, next) => {
         errorSources = [
           {
             path: '',
-            message: (err.meta?.cause as string) || 'The requested record does not exist',
+            message: 'The requested record could not be found.',
           },
         ];
         break;
@@ -88,31 +87,31 @@ const globalErrorHandler: ErrorRequestHandler = (err, req, res, next) => {
         break;
       }
       default: {
-        message = 'Database Error';
+        message = 'Unable to complete the request';
         errorSources = [
           {
             path: '',
-            message: err.message,
+            message: 'Please try again later.',
           },
         ];
       }
     }
   } else if (err instanceof PrismaClientInitializationError) {
     statusCode = httpStatus.INTERNAL_SERVER_ERROR;
-    message = 'Database Connection Error';
+    message = 'Something went wrong';
     errorSources = [
       {
         path: '',
-        message: 'Failed to connect to the database',
+        message: 'Please try again later.',
       },
     ];
   } else if (err instanceof PrismaClientUnknownRequestError) {
     statusCode = httpStatus.INTERNAL_SERVER_ERROR;
-    message = 'Unknown Database Error';
+    message = 'Something went wrong';
     errorSources = [
       {
         path: '',
-        message: err.message,
+        message: 'Please try again later.',
       },
     ];
   } else if (err instanceof AppError) {
@@ -125,11 +124,12 @@ const globalErrorHandler: ErrorRequestHandler = (err, req, res, next) => {
       },
     ];
   } else if (err instanceof Error) {
-    message = err?.message;
+    statusCode = httpStatus.INTERNAL_SERVER_ERROR;
+    message = 'Something went wrong';
     errorSources = [
       {
         path: '',
-        message: err?.message,
+        message: 'Please try again later.',
       },
     ];
   }
@@ -138,8 +138,8 @@ const globalErrorHandler: ErrorRequestHandler = (err, req, res, next) => {
     success: false,
     message,
     errorSources,
-    err,
-    stack: config.NODE_ENV === 'development' ? err?.stack : null,
+    err: null,
+    stack: null,
   });
 };
 
