@@ -1,437 +1,436 @@
-
-
-import { GasSupply, ListRoom, ParkingSpace, Prisma, PropertyCategory } from "@prisma/client";
-import { IListRoomInput } from "./listRoom.interface";
+import { ListRoom, Prisma, PropertyCategory, Role } from "@prisma/client";
+import { IListRoomInput, IUpdateListRoomInput } from "./listRoom.interface";
 import { prisma } from "../../../prisma";
 import AppError from "../../errors/AppError";
-import httpStatus, { status } from 'http-status'
+import status from "http-status";
 import { sendMultipleFilesToCloudinary } from "../../utils/Cloudinary/sendFileToCloudinary";
 import catchError from "../../errors/catchError";
 import deleteFileFromCloudinary from "../../utils/Cloudinary/deleteFileFromCloudinary";
-import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
-import { meta, QueryBuilder, QueryParams } from "../../builder/QueryBuilder";
+import { QueryParams } from "../../builder/QueryBuilder";
 import { cacheAside, invalidateCacheDomains } from "../../redis/cache";
 import { cacheKeys, cacheTtlSeconds } from "../../redis/cacheKeys";
 
-const createRoomListingIntoDb = async (
-    payload: IListRoomInput,
-    userId: string
-): Promise<ListRoom> => {
-    try {
+const DAILY_LISTING_LIMIT = 5;
 
-        const startOfToday = new Date();
-        startOfToday.setHours(0, 0, 0, 0);
-
-        const todayListingsCount = await prisma.listRoom.count({
-            where: {
-                userId: userId,
-                isDeleted: false,
-                createdAt: {
-                    gte: startOfToday,
-                },
-            },
-        });
-
-        if (todayListingsCount >= 5) {
-            throw new AppError(
-                httpStatus.TOO_MANY_REQUESTS,
-                "You have reached the limit of 5 room listings per day."
-            );
-        }
-
-        // ২. payload.photos এর ভেতর থাকা ফাইল প্যাথগুলোকে Cloudinary-তে আপলোড করা
-        let finalPhotoUrls: string[] = [];
-
-        if (payload.photos && payload.photos.length > 0) {
-            finalPhotoUrls = await sendMultipleFilesToCloudinary(
-                payload.photos,
-                "room-listings"
-            );
-        }
-
-        if (finalPhotoUrls.length === 0) {
-            throw new AppError(
-                httpStatus.BAD_REQUEST,
-                "At least one room photo is required."
-            );
-        }
-
-        await invalidateCacheDomains("rooms");
-        // ৩. ডাটাবেজে রুম লিস্টিং রেকর্ড তৈরি করা
-        const result = await prisma.listRoom.create({
-            data: {
-                address: payload.address,
-                availableFrom: new Date(payload.availableFrom),
-                category: payload.category,
-                contactNumber: payload.contactNumber,
-                description: payload.description,
-                gasSupply: payload.gasSupply || null,
-                location: payload.location,
-                parkingSpace: payload.parkingSpace || "NotSpecified",
-                photos: finalPhotoUrls, // ডাটাবেজে সরাসরি Cloudinary URL সেভ হবে
-                rent: Number(payload.rent),
-                serviceCharge: payload.serviceCharge ? Number(payload.serviceCharge) : null,
-                waterBill: payload.waterBill || "Optional",
-                userId: userId,
-            },
-        });
-
-        await invalidateCacheDomains("rooms");
-        return result;
-    } catch (error) {
-        throw catchError(error, "Error occurred while creating room listing");
-    }
-};
-
-export interface IRoomQueryFilters {
-    search?: string;
-    maxRent?: string | number;
-    parking?: string | boolean;
-    gas?: string | boolean;
-    category?: PropertyCategory;
-    startDate?: string;
-    endDate?: string;
-    page?: string | number;
-    limit?: string | number;
+interface RoomQueryFilters {
+  search?: string;
+  area?: string;
+  types?: PropertyCategory;
+  neighborhood?: string;
+  page?: string | number;
+  limit?: string | number;
+  description?: string
+  address?: string
 }
 
-const findByAllListIntoDb = async (queryParams: IRoomQueryFilters) => {
-    const {
-        search,
-        maxRent,
-        parking,
-        gas,
-        category,
-        startDate,
-        endDate,
-        page = 1,
-        limit = 10,
-    } = queryParams;
+const pageOptions = (query: QueryParams) => {
+  const pageValue = Number(query.page);
+  const limitValue = Number(query.limit);
+  const page = Number.isInteger(pageValue) && pageValue > 0 ? pageValue : 1;
+  const limit =
+    Number.isInteger(limitValue) && limitValue > 0
+      ? Math.min(limitValue, 100)
+      : 10;
 
-    const pageNum = Math.max(1, Number(page) || 1);
-    const limitNum = Math.max(1, Number(limit) || 10);
-    const skip = (pageNum - 1) * limitNum;
+  return { page, limit, skip: (page - 1) * limit };
+};
 
-    // dynamic conditions array mapping
-    const AND_conditions: Prisma.ListRoomWhereInput[] = [
-        { isDeleted: false }
-    ];
+const roomWhere = (
+  query: RoomQueryFilters,
+  userId?: string,
+): Prisma.ListRoomWhereInput => {
+  const conditions: Prisma.ListRoomWhereInput[] = [{ isDeleted: false }];
 
-    if (search && search.trim() !== '') {
-        const searchString = search.trim();
-        AND_conditions.push({
-            OR: [
-                { location: { contains: searchString, mode: 'insensitive' } },
-                { address: { contains: searchString, mode: 'insensitive' } },
-            ],
-        });
-    }
-
-    if (maxRent !== undefined && maxRent !== '' && !isNaN(Number(maxRent))) {
-        AND_conditions.push({
-            rent: { lte: Number(maxRent) },
-        });
-    }
-
-
-    if (category && Object.values(PropertyCategory).includes(category)) {
-        AND_conditions.push({ category });
-    }
-
-    if (parking !== undefined && parking !== '' && parking !== null) {
-        const isParkingTrue = parking === true || parking === 'true';
-        if (isParkingTrue) {
-            AND_conditions.push({
-                parkingSpace: ParkingSpace.Available,
-            });
-        }
-    }
-
-    if (gas !== undefined && gas !== '' && gas !== null) {
-        const isGasTrue = gas === true || gas === 'true';
-        if (isGasTrue) {
-            AND_conditions.push({
-                OR: [
-                    { gasSupply: GasSupply.LineGas },
-                    { gasSupply: GasSupply.Cylinder },
-                ],
-            });
-        }
-    }
-
-
-    if (startDate || endDate) {
-        const dateQuery: any = {};
-        if (startDate && startDate.trim() !== '') {
-            dateQuery.gte = new Date(startDate);
-        }
-        if (endDate && endDate.trim() !== '') {
-            dateQuery.lte = new Date(endDate);
-        }
-        AND_conditions.push({ availableFrom: dateQuery });
-    }
-
-    const whereConditions: Prisma.ListRoomWhereInput = {
-        AND: AND_conditions,
-    };
-
-    // Database Execution with Prisma Transaction
-    return cacheAside(
-      "rooms",
-      cacheKeys.rooms.list(queryParams),
-      cacheTtlSeconds.list,
-      async () => {
-        const [result, totalCount] = await prisma.$transaction([
-          prisma.listRoom.findMany({
-            where: whereConditions,
-            select: {
-              id: true,
-              location: true,
-              // address: true,
-              rent: true,
-              availableFrom: true,
-              photos: true,
-              // category: true,
-              // parkingSpace: true,
-              // gasSupply: true,
-              // waterBill: true,
-              // serviceCharge: true,
-              // contactNumber: true,
-            },
-            skip,
-            take: limitNum,
-            orderBy: {
-              createdAt: 'desc',
-            },
-          }),
-          prisma.listRoom.count({ where: whereConditions }),
-        ]);
-
-        return {
-          meta: {
-            page: pageNum,
-            limit: limitNum,
-            totalCount,
-            totalPages: Math.ceil(totalCount / limitNum),
-          },
-          data: result,
-        };
-      }
+  if (query.search?.trim()) {
+    const search = query.search.trim();
+    const matchingTypes = Object.values(PropertyCategory).filter((type) =>
+      type.toLowerCase().includes(search.toLowerCase()),
     );
+    conditions.push({
+      OR: [
+        { address: { contains: search, mode: "insensitive" } },
+        { area: { contains: search, mode: "insensitive" } },
+        ...(matchingTypes.length > 0 ? [{ types: { in: matchingTypes } }] : []),
+        { neighborhood: { contains: search, mode: "insensitive" } },
+      ],
+    });
+  }
+
+  if (query.area?.trim()) {
+    conditions.push({
+      area: { contains: query.area.trim(), mode: "insensitive" },
+    });
+  }
+
+  if (query.types && Object.values(PropertyCategory).includes(query.types)) {
+    conditions.push({ types: query.types });
+  }
+
+  if (query.neighborhood?.trim()) {
+    conditions.push({
+      neighborhood: {
+        contains: query.neighborhood.trim(),
+        mode: "insensitive",
+      },
+    });
+  }
+
+  if (userId) {
+    conditions.push({ userId });
+  }
+
+  return { AND: conditions };
+};
+
+const createRoomListingIntoDb = async (
+  payload: IListRoomInput,
+  userId: string,
+): Promise<ListRoom> => {
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+
+  const todayListingsCount = await prisma.listRoom.count({
+    where: {
+      userId,
+      isDeleted: false,
+      createdAt: { gte: startOfToday },
+    },
+  });
+
+  if (todayListingsCount >= DAILY_LISTING_LIMIT) {
+    throw new AppError(
+      status.TOO_MANY_REQUESTS,
+      `You have reached the limit of ${DAILY_LISTING_LIMIT} room listings per day.`,
+    );
+  }
+
+  let uploadedPhotoUrls: string[] = [];
+  let result: ListRoom;
+
+  try {
+    if (payload.photos?.length) {
+      uploadedPhotoUrls = await sendMultipleFilesToCloudinary(
+        payload.photos,
+        "room-listings",
+      );
+    }
+
+    result = await prisma.listRoom.create({
+      data: {
+        address: payload.address,
+        area: payload.area,
+        types: payload.types,
+        description: payload.description,
+        neighborhood: payload.neighborhood,
+        photos: uploadedPhotoUrls,
+        userId,
+      },
+    });
+  } catch (error) {
+    await Promise.allSettled(
+      uploadedPhotoUrls.map((imageUrl) => deleteFileFromCloudinary(imageUrl)),
+    );
+    throw catchError(error, "Error occurred while creating room listing");
+  }
+
+  await invalidateCacheDomains("rooms");
+  return result;
+};
+
+const findByAllListIntoDb = async (queryParams: QueryParams) => {
+  const filters = queryParams as RoomQueryFilters;
+  const { page, limit, skip } = pageOptions(queryParams);
+  const where = roomWhere(filters);
+
+  return cacheAside(
+    "rooms",
+    cacheKeys.rooms.list(queryParams),
+    cacheTtlSeconds.list,
+    async () => {
+      const [data, totalCount] = await prisma.$transaction([
+        prisma.listRoom.findMany({
+          where,
+          select: {
+            id: true,
+            address: true,
+            area: true,
+            types: true,
+            description: true,
+            neighborhood: true,
+            photos: true,
+            viewCount:true,
+            createdAt: true,
+            user:{
+              select:{
+                name: true ,
+                phone: true
+                 
+
+              }
+            }
+          },
+          skip,
+          take: limit,
+          orderBy: { createdAt: "desc" },
+        }),
+        prisma.listRoom.count({ where }),
+      ]);
+
+      return {
+        meta: {
+          page,
+          limit,
+          totalCount,
+          totalPages: Math.ceil(totalCount / limit),
+        },
+        data,
+      };
+    },
+  );
 };
 
 const findBySpecificRoomListIntoDb = async (id: string) => {
-
-    try {
-
-        const result = await cacheAside(
-          "rooms",
-          cacheKeys.rooms.detail(id),
-          cacheTtlSeconds.detail,
-          () => prisma.listRoom.findFirstOrThrow({
-            where: { id },
-            select: {
-                id: true,
-                location: true,
-                address: true,
-                rent: true,
-                availableFrom: true,
-                photos: true,
-                category: true,
-                parkingSpace: true,
-                gasSupply: true,
-                waterBill: true,
-                serviceCharge: true,
-                contactNumber: true,
-                description: true,
-                user: {
-                    select: {
-                        name: true,
-                        phone: true
-                    }
-                }
-
-
-              }
-            })
-          );
-
-        return result
-
-    }
-    catch (error) {
-        throw catchError(error);
-    }
-};
-
-const deleteListRoomIntoDb = async (id: string, userId: string) => {
   try {
-    const houseListing = await prisma.listRoom.findFirst({
-      where: {
-        id,
-        userId,
-        isDeleted: false,
+    return await cacheAside(
+      "rooms",
+      cacheKeys.rooms.detail(id),
+      cacheTtlSeconds.detail,
+      async () => {
+        const room = await prisma.listRoom.findFirst({
+          where: { id, isDeleted: false },
+          select: {
+            id: true,
+            address: true,
+            area: true,
+            types: true,
+            description: true,
+            neighborhood: true,
+            viewCount:true,
+            photos: true,
+            createdAt: true,
+            updatedAt: true
+          },
+        });
+
+        if (!room) {
+          throw new AppError(status.NOT_FOUND, "Room listing not found.");
+        }
+        return room;
       },
-      select: {
-        id: true,
-        photos: true,
-      },
-    });
-
-    if (!houseListing) {
-      throw new AppError(
-        status.NOT_FOUND,
-        'Listing not found or unauthorized access.'
-      );
-    }
-
-    await invalidateCacheDomains("rooms", "saved-rooms");
-    await prisma.$transaction([
-      prisma.saveRoom.deleteMany({
-        where: {
-          listRoomId: id,
-        },
-      }),
-
-      prisma.listRoom.update({
-        where: {
-          id,
-        },
-        data: {
-          isDeleted: true,
-          updatedAt: new Date(),
-        },
-      }),
-    ]);
-    await invalidateCacheDomains("rooms", "saved-rooms");
-    if (houseListing.photos && houseListing.photos.length > 0) {
-      Promise.all(
-        houseListing.photos.map((imageUrl: string) =>
-          deleteFileFromCloudinary(imageUrl)
-        )
-      ).catch((err) =>
-        console.error('Background Cloudinary Cleanup Error:', err)
-      );
-    }
-
-    return true;
-  } catch (error) {
-    if (error instanceof PrismaClientKnownRequestError) {
-      throw catchError(
-        error,
-        'Database operational failure while deleting the house listing.'
-      );
-    }
-
-    throw catchError(
-      error,
-      error instanceof Error
-        ? error.message
-        : 'Failed to soft-delete the house listing.'
     );
+  } catch (error) {
+    throw catchError(error, "Failed to find room listing");
   }
 };
 
-const findMyHouseListingsIntoDb = async (userId: string, queryParams: QueryParams) => {
-  try {
-    const searchableFields = ['location', 'address'];
-
-  
-    const filterableFields = ['category'];
-
-    const queryBuilder = new QueryBuilder(queryParams)
-      .search(searchableFields)
-      .filter(filterableFields);
-
-    
-    const customConditions: Record<string, any> = {
+const updateRoomListingIntoDb = async (
+  id: string,
+  payload: IUpdateListRoomInput,
+  userId: string,
+  role: Role,
+): Promise<ListRoom> => {
+  const currentRoom = await prisma.listRoom.findFirst({
+    where: {
+      id,
       isDeleted: false,
-        userId: userId, 
-    };
+      ...(role === Role.ADMIN ? {} : { userId }),
+    },
+    select: { photos: true },
+  });
 
-    // Rent filter
-    if (queryParams.maxRent && !isNaN(Number(queryParams.maxRent))) {
-      customConditions.rent = { lte: Number(queryParams.maxRent) };
+  if (!currentRoom) {
+    throw new AppError(
+      status.NOT_FOUND,
+      "Room listing not found or unauthorized access.",
+    );
+  }
+
+  let uploadedPhotoUrls: string[] = [];
+  const data: Prisma.ListRoomUpdateInput = {};
+
+  if (payload.address !== undefined) data.address = payload.address;
+  if (payload.area !== undefined) data.area = payload.area;
+  if (payload.types !== undefined) data.types = payload.types;
+  if (payload.description !== undefined) data.description = payload.description;
+  if (payload.neighborhood !== undefined)
+    data.neighborhood = payload.neighborhood;
+
+  if (payload.photos !== undefined) {
+    if (payload.photos.length > 0) {
+      uploadedPhotoUrls = await sendMultipleFilesToCloudinary(
+        payload.photos,
+        "room-listings",
+      );
+    }
+    data.photos = uploadedPhotoUrls;
+  }
+
+  let result: ListRoom;
+  try {
+    result = await prisma.listRoom.update({
+      where: { id },
+      data,
+    });
+  } catch (error) {
+    await Promise.allSettled(
+      uploadedPhotoUrls.map((imageUrl) => deleteFileFromCloudinary(imageUrl)),
+    );
+    throw catchError(error, "Failed to update room listing");
+  }
+
+  await invalidateCacheDomains("rooms", "saved-rooms");
+  if (payload.photos !== undefined) {
+    await Promise.all(
+      currentRoom.photos.map((imageUrl) => deleteFileFromCloudinary(imageUrl)),
+    );
+  }
+  return result;
+};
+
+const deleteListRoomIntoDb = async (
+  id: string,
+  userId: string,
+  role: Role,
+): Promise<boolean> => {
+  try {
+    const room = await prisma.listRoom.findFirst({
+      where: {
+        id,
+        isDeleted: false,
+        ...(role === Role.ADMIN ? {} : { userId }),
+      },
+      select: { id: true, photos: true },
+    });
+
+    if (!room) {
+      throw new AppError(
+        status.NOT_FOUND,
+        "Listing not found or unauthorized access.",
+      );
     }
 
-    // Parking filter
-    if (queryParams.parking === true || queryParams.parking === 'true') {
-      customConditions.parkingSpace = ParkingSpace.Available;
-    }
+    await prisma.$transaction([
 
-    // Gas filter (Not Null Check)
-    if (queryParams.gas === true || queryParams.gas === 'true') {
-      customConditions.gasSupply = { not: null };
-    }
+      prisma.listRoom.update({
+        where: { id },
+        data: { isDeleted: true },
+      }),
+    ]);
+    await invalidateCacheDomains("rooms", "saved-rooms");
 
-    // Date Range filter
-    if (queryParams.startDate || queryParams.endDate) {
-      const dateQuery: Record<string, Date> = {};
-      if (typeof queryParams.startDate === 'string' && queryParams.startDate.trim() !== '') {
-        dateQuery.gte = new Date(queryParams.startDate);
-      }
-      if (typeof queryParams.endDate === 'string' && queryParams.endDate.trim() !== '') {
-        dateQuery.lte = new Date(queryParams.endDate);
-      }
-      customConditions.availableFrom = dateQuery;
-    }
+    await Promise.all(
+      room.photos.map((imageUrl) => deleteFileFromCloudinary(imageUrl)),
+    );
+    return true;
+  } catch (error) {
+    throw catchError(error, "Failed to delete room listing");
+  }
+};
 
-    // Custom conditions গুলোকে QueryBuilder-এর where অবজেক্টের সাথে মার্জ করা
-    queryBuilder.scope(customConditions);
-
-    const query = queryBuilder.build('createdAt');
-
-    // Select specific fields for optimization
-    const selectFields: Prisma.ListRoomSelect = {
-      id: true,
-      location: true,
-      address: true,
-      rent: true,
-      availableFrom: true,
-      photos: true,
-      category: true,
-      parkingSpace: true,
-      gasSupply: true,
-      waterBill: true,
-      serviceCharge: true,
-      contactNumber: true,
-      description: true,
-
-    };
+const findMyHouseListingsIntoDb = async (
+  userId: string,
+  queryParams: QueryParams,
+) => {
+  try {
+    const filters = queryParams as RoomQueryFilters;
+    const { page, limit, skip } = pageOptions(queryParams);
+    const where = roomWhere(filters, userId);
 
     return await cacheAside(
       "rooms",
       cacheKeys.rooms.byUser(userId, queryParams),
       cacheTtlSeconds.list,
       async () => {
-        const [result, totalCount] = await prisma.$transaction([
+        const [data, totalCount] = await prisma.$transaction([
           prisma.listRoom.findMany({
-            where: query.where,
-            select: selectFields,
-            skip: query.skip,
-            take: query.take,
-            orderBy: query.orderBy,
+            where,
+            select: {
+              id: true,
+              address: true,
+              area: true,
+              types: true,
+              description: true,
+              neighborhood: true,
+              photos: true,
+              viewCount:true,
+              createdAt: true,
+              updatedAt: true,
+            },
+            skip,
+            take: limit,
+            orderBy: { createdAt: "desc" },
           }),
-          prisma.listRoom.count({ where: query.where }),
+          prisma.listRoom.count({ where }),
         ]);
 
         return {
-          meta: meta(totalCount, query),
-          data: result,
+          meta: {
+            page,
+            limit,
+            totalCount,
+            totalPages: Math.ceil(totalCount / limit),
+          },
+          data,
         };
-      }
+      },
     );
   } catch (error) {
-    throw catchError(error);
+    throw catchError(error, "Failed to find your room listings");
   }
 };
 
+const viewCountIntoDb = async (payload: { roomId: string; ipAddress: string }) => {
+  try {
+    const { roomId, ipAddress } = payload;
+
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+
+    const existingView = await prisma.roomView.findFirst({
+      where: {
+        roomId: roomId,
+        ipAddress: ipAddress,
+        createdAt: {
+          gte: thirtyMinutesAgo,
+        },
+      },
+    });
+
+    // যদি ইতিমধ্যে এই সময়ের মধ্যে ভিউ হয়ে থাকে, তবে নতুন করে কাউন্ট বাড়বে না
+    if (existingView) {
+      return { success: false, message: 'View already counted for this IP recently' };
+    }
+
+    // ৩. নতুন ইউনিক আইপি হলে ডাটাবেজে রেকর্ড সেভ করা এবং মূল রুমের ভিউ ১ বাড়ানো
+    const result = await prisma.$transaction([
+      prisma.roomView.create({
+        data: {
+          roomId: roomId,
+          ipAddress: ipAddress,
+        },
+      }),
+      prisma.listRoom.update({
+        where: { id: roomId },
+        data: {
+          viewCount: {
+            increment: 1,
+          },
+        },
+      }),
+    ]);
+
+    return { success: true, message: 'View counted successfully' };
+  } catch (error) {
+    throw catchError(error, "Failed to update room view count");
+  }
+};
 const ListRoomService = {
-    createRoomListingIntoDb,
-    findByAllListIntoDb,
-    findBySpecificRoomListIntoDb,
-    deleteListRoomIntoDb,
-    findMyHouseListingsIntoDb
+  createRoomListingIntoDb,
+  findByAllListIntoDb,
+  findBySpecificRoomListIntoDb,
+  updateRoomListingIntoDb,
+  deleteListRoomIntoDb,
+  findMyHouseListingsIntoDb,
+  viewCountIntoDb
 };
 
-export default ListRoomService
+export default ListRoomService;

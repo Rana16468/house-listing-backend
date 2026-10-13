@@ -75,18 +75,18 @@ type ContactInfo {
 }
 
 model Post {
-  id              String           @id @default(auto()) @map("_id") @db.ObjectId
+  id              String         @id @default(auto()) @map("_id") @db.ObjectId
   title           String
   description     String
   category        RentalCategory
   tenantType      TenantType
-  parking         ParkingType      @default(none)
+  parking         ParkingType    @default(none)
   address         String?
   liveLocationUrl String?
   images          String[]
   availableFrom   String
   pin             String
-  source          String           @default("user")
+  source          String         @default("user")
   deviceId        String
   // Embedded Structured Fields
   location        Location
@@ -96,9 +96,9 @@ model Post {
   browser         String?
   device          String?
   ipAddress       String?
-  isDelete        Boolean          @default(false)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  isDelete        Boolean        @default(false)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   @@index([category, tenantType, os, device, browser, deviceId])
   @@index([location.division, location.district, location.thana, contact.phone, utilities.baseRent, availableFrom])
@@ -119,38 +119,40 @@ enum Status {
 }
 
 model User {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  name      String
-  phone     String?
-  email     String?
-  photo     String?
-  status    Status   @default(ACTIVE)
-  role      Role     @default(USER)
-  os        String?
-  browser   String?
-  device    String?
-  ipAddress String?
-  isOnline  Boolean  @default(false)
-  isVerify  Boolean  @default(false)
-  isDeleted Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  rooms     ListRoom[]
-  saveRoom   SaveRoom[]
+  id          String       @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  phone       String?
+  city        String?
+  email       String?
+  photo       String?
+  status      Status       @default(ACTIVE)
+  role        Role         @default(USER)
+  os          String?
+  browser     String?
+  device      String?
+  ipAddress   String?
+  isOnline    Boolean      @default(false)
+  isVerify    Boolean      @default(false)
+  isDeleted   Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  rooms       ListRoom[]
+  saveRoom    SaveRoom[]
+  reportRooms reportRoom[]
 
   @@index([phone, email, status, os, browser, device, isDeleted, isVerify, createdAt])
-  @@index([role])
+  @@index([role, city])
   @@index([ipAddress])
   @@index([isDeleted, role])
   @@map("users")
 }
 
 enum PropertyCategory {
-  House
-  Flat
+  Family
+  Bachelor
   Sublet
-  SingleRoom  
-  OfficeSpace 
+  Hostel
+  Office
 }
 
 enum WaterBill {
@@ -160,60 +162,84 @@ enum WaterBill {
 }
 
 enum GasSupply {
-  LineGas  
+  LineGas
   Cylinder
 }
 
 enum ParkingSpace {
   Available
-  NotAvailable  
-  NotSpecified 
+  NotAvailable
+  NotSpecified
+}
+
+enum ReportType {
+  Wrong_Number
+  Misleading_Photos
+  Scam_OR_Spam
+}
+
+model reportRoom {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  roomId    String   @db.ObjectId
+  reportType  ReportType 
+  isDeleted  Boolean  @default(false)
+  listRooms ListRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("report_rooms")
 }
 
 model ListRoom {
-  id            String           @id @default(auto()) @map("_id") @db.ObjectId
-  address       String
-  availableFrom DateTime
-  category      PropertyCategory
-  contactNumber String
-  description   String
-  gasSupply     GasSupply?
-  location      String
-  parkingSpace  ParkingSpace     @default(NotSpecified)
-  photos        String[]
-  rent          Int
-  serviceCharge Int?
-  waterBill     WaterBill        @default(Optional)
-  isDeleted     Boolean          @default(false)
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
-  userId        String           @db.ObjectId
-  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  saveRoom   SaveRoom[]
-  // ---------------- INDEXES ---------------- //
-  @@index([userId]) // নির্দিষ্ট ইউজারের সব লিস্টিং (My Posts) দ্রুত লোড করার জন্য
-  @@index([location])
-  @@index([availableFrom])
-  @@index([category])
-  @@index([rent])
-  @@index([location, category])
-  @@index([location, rent])
+  id           String           @id @default(auto()) @map("_id") @db.ObjectId
+  address      String
+  area         String
+  types        PropertyCategory
+  description  String
+  neighborhood String
+  viewCount    Int?             @default(0)
+  photos       String[]         @default([])
+  userId       String           @db.ObjectId
+  isDeleted    Boolean          @default(false)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roomViews    RoomView[]
+  reportRooms  reportRoom[]
+  savedBy      SaveRoom[]      
+
+  @@index([userId, types, neighborhood, area])
   @@index([createdAt(sort: Desc)])
   @@index([address, isDeleted])
-
   @@map("list_rooms")
 }
 
-model SaveRoom {
+model RoomView {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId    String   @db.ObjectId
-  listRoomId String  @db.ObjectId
+  ipAddress String?
+  roomId    String   @db.ObjectId
+  roomViews ListRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  isDeleted Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  listRoom  ListRoom @relation(fields: [listRoomId], references: [id], onDelete: Cascade)
- isDeleted Boolean  @default(false)
-  @@unique([userId, listRoomId]) 
+
+  @@index([ipAddress, roomId, isDeleted])
+  @@index([createdAt(sort: Desc)])
+  @@map("room_view")
+}
+
+model SaveRoom {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String   @db.ObjectId
+  listRoomId String   @db.ObjectId
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listRoom   ListRoom @relation(fields: [listRoomId], references: [id], onDelete: Cascade) // রিলেশন ফিল্ড যুক্ত করা হলো
+
+  isDeleted Boolean @default(false)
+
+  @@unique([userId, listRoomId])
   @@index([userId])
   @@index([listRoomId, isDeleted])
   @@map("saved_rooms")

@@ -5,11 +5,23 @@ import sendResponse from "../../utils/sendResponse";
 import httpStatus from "http-status";
 import config from "../../config";
 import UserService from "./user.services";
+import AppError from "../../errors/AppError";
 
 const createUser: RequestHandler = catchAsync(async (req, res) => {
 
-    const result = await UserService.createUserIntoDb(req.body);
-    const { refreshToken, accessToken } = result;
+    const clientIpAddress = req.ip ?? req.socket.remoteAddress;
+    if (!clientIpAddress) {
+        throw new AppError(
+            httpStatus.INTERNAL_SERVER_ERROR,
+            "Unable to determine the client IP address."
+        );
+    }
+
+    const result = await UserService.createUserIntoDb(
+        req.body,
+        clientIpAddress.replace(/^::ffff:/, "")
+    );
+    const { accessToken, refreshToken } = result;
     res.cookie("refreshToken", refreshToken, {
         secure: config.NODE_ENV === "production",
         httpOnly: true,
@@ -20,8 +32,8 @@ const createUser: RequestHandler = catchAsync(async (req, res) => {
         message: "Successfully Login",
         data: {
             accessToken,
-            refreshToken
-        },
+            refreshToken,
+        }
     });
 });
 
@@ -56,11 +68,22 @@ const findMyProfile: RequestHandler = catchAsync(async (req, res) => {
     });
 });
 
+const avater: RequestHandler = catchAsync(async (req, res) => {
+    const result = await UserService.avaterIntoDb(req.user.id);
+    sendResponse(res, {
+        statusCode: httpStatus.OK,
+        success: true,
+        message: "Successfully fetched user profile",
+        data: result,
+    });
+});
+
 
 const UserController = {
     createUser,
     createAccount,
     changeProfilePicture,
-    findMyProfile
+    findMyProfile,
+    avater
 };
 export default UserController;

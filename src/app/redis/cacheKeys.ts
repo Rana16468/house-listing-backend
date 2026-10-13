@@ -1,6 +1,11 @@
 import { createHash } from "crypto";
 
-export type CacheDomain = "posts" | "rooms" | "saved-rooms" | "users";
+export type CacheDomain =
+  | "posts"
+  | "rooms"
+  | "saved-rooms"
+  | "report-rooms"
+  | "users";
 
 const stableValue = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(stableValue);
@@ -39,6 +44,9 @@ export const cacheKeys = {
   savedRooms: {
     byUser: (userId: string, query: unknown) =>
       `user:${hash(userId)}:${hash(query)}`,
+  },
+  reportRooms: {
+    list: (query: unknown) => `list:${hash(query)}`,
   },
   users: {
     profile: (userId: string) => `profile:${safePart(userId)}`,

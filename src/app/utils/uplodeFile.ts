@@ -1,35 +1,33 @@
 // src/utils/uploadFile.ts
-import multer, { FileFilterCallback } from 'multer';
-import path from 'path';
-import fs from 'fs';
-import sharp from 'sharp';
-import { v4 as uuidv4 } from 'uuid';
-import status from 'http-status';
-import { Request, Response, NextFunction } from 'express';
-import AppError from '../errors/AppError';
-
-
+import multer, { FileFilterCallback } from "multer";
+import path from "path";
+import fs from "fs";
+import sharp from "sharp";
+import { v4 as uuidv4 } from "uuid";
+import status from "http-status";
+import { Request, Response, NextFunction } from "express";
+import AppError from "../errors/AppError";
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    let folderPath = './src/public';
+    let folderPath = "./src/public";
 
-    if (file.mimetype.startsWith('image/')) {
-      folderPath = './src/public/images';
-    } else if (file.mimetype === 'application/pdf') {
-      folderPath = './src/public/pdf';
-    } else if (file.mimetype.startsWith('audio/')) {
-      folderPath = './src/public/audio';
-    } else if (file.mimetype.startsWith('video/')) {
-      folderPath = './src/public/video';
+    if (file.mimetype.startsWith("image/")) {
+      folderPath = "./src/public/images";
+    } else if (file.mimetype === "application/pdf") {
+      folderPath = "./src/public/pdf";
+    } else if (file.mimetype.startsWith("audio/")) {
+      folderPath = "./src/public/audio";
+    } else if (file.mimetype.startsWith("video/")) {
+      folderPath = "./src/public/video";
     } else {
       cb(
         new AppError(
           status.BAD_REQUEST,
-          'Only images, PDFs, audio, and video files are allowed',
-          '',
+          "Only images, PDFs, audio, and video files are allowed",
+          "",
         ),
-        './src/public',
+        "./src/public",
       );
       return;
     }
@@ -44,34 +42,32 @@ const storage = multer.diskStorage({
   filename(_req, file, cb) {
     const fileExt = path.extname(file.originalname);
     const fileName = `${file.originalname
-      .replace(fileExt, '')
+      .replace(fileExt, "")
       .toLocaleLowerCase()
-      .split(' ')
-      .join('-')}-${uuidv4()}`;
+      .split(" ")
+      .join("-")}-${uuidv4()}`;
 
     cb(null, fileName + fileExt);
   },
 });
 
-
-
 const allowedMimeTypes = [
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/gif',
-  'application/pdf',
-  'audio/mpeg',
-  'audio/wav',
-  'audio/ogg',
-  'video/mp4',
-  'video/mpeg',
-  'video/webm',
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "application/pdf",
+  "audio/mpeg",
+  "audio/wav",
+  "audio/ogg",
+  "video/mp4",
+  "video/mpeg",
+  "video/webm",
 ];
 
 const fileFilter = (
   _req: Request,
-  file: Express.Multer.File,
+  file: NonNullable<Request["file"]>,
   cb: FileFilterCallback,
 ) => {
   if (allowedMimeTypes.includes(file.mimetype)) {
@@ -81,7 +77,7 @@ const fileFilter = (
       new AppError(
         status.BAD_REQUEST,
         `File type "${file.mimetype}" is not supported`,
-        '',
+        "",
       ) as unknown as null,
       false,
     );
@@ -115,14 +111,16 @@ const compressImage = (options: CompressOptions = {}) => {
   return async (req: Request, _res: Response, next: NextFunction) => {
     try {
       // handle both single (req.file) and multiple (req.files) uploads
-      const files: Express.Multer.File[] = req.file
+      const files: NonNullable<Request["file"]>[] = req.file
         ? [req.file]
         : Array.isArray(req.files)
           ? req.files
-          : [];
+          : req.files
+            ? Object.values(req.files).flat()
+            : [];
 
       for (const file of files) {
-        if (!file.mimetype.startsWith('image/')) continue;
+        if (!file.mimetype.startsWith("image/")) continue;
 
         const filePath = file.path;
         const ext = path.extname(filePath).toLowerCase();
@@ -133,11 +131,11 @@ const compressImage = (options: CompressOptions = {}) => {
           withoutEnlargement: true,
         });
 
-        if (ext === '.jpg' || ext === '.jpeg') {
+        if (ext === ".jpg" || ext === ".jpeg") {
           sharpInstance = sharpInstance.jpeg({ quality });
-        } else if (ext === '.png') {
+        } else if (ext === ".png") {
           sharpInstance = sharpInstance.png({ quality, compressionLevel: 8 });
-        } else if (ext === '.webp') {
+        } else if (ext === ".webp") {
           sharpInstance = sharpInstance.webp({ quality });
         } else {
           // gif or unsupported format for sharp encoding — skip compression

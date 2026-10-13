@@ -1,80 +1,82 @@
-import { z } from 'zod';
+import { error } from "console";
+import { z } from "zod";
 
-const PropertyCategoryEnum = z.enum([
-  'House',
-  'Flat',
-  'Sublet',
-  'SingleRoom',
-  'OfficeSpace',
+const propertyCategorySchema = z.enum([
+  "Family",
+  "Bachelor",
+  "Sublet",
+  "Hostel",
+  "Office",
 ]);
 
-const WaterBillEnum = z.enum(['Included', 'Separate', 'Optional']);
+const objectIdSchema = z.string().regex(/^[a-f\d]{24}$/i, "Invalid room ID");
 
-const GasSupplyEnum = z.enum(['LineGas', 'Cylinder']);
-
-const ParkingSpaceEnum = z.enum(['Available', 'NotAvailable', 'NotSpecified']);
+const roomFields = {
+  address: z.string().trim().min(3).max(300),
+  area: z.string().trim().min(2).max(200),
+  types: propertyCategorySchema,
+  description: z.string().trim().min(10).max(5000),
+  neighborhood: z.string().trim().min(2).max(200),
+  photos: z.array(z.string().trim().min(1)).max(5),
+};
 
 const createRoomListingValidationSchema = z.object({
   body: z.object({
-    address: z.string({
-      error: 'Address is required',
-    }).min(3, { message: 'Address must be at least 3 characters long' }),
-
-    availableFrom: z.string({
-      error: 'Available date is required',
-    }),
-
-    category: PropertyCategoryEnum,
-
-    contactNumber: z.string({
-      error: 'Contact number is required',
-    }).min(10, { message: 'Contact number must be valid' }),
-
-    description: z.string({
-      error: 'Description is required',
-    }).min(10, { message: 'Description must be at least 10 characters long' }),
-
-    gasSupply: GasSupplyEnum.optional().nullable(),
-
-    location: z.string({
-      error: 'Location is required',
-    }),
-
-    parkingSpace: ParkingSpaceEnum.default('NotSpecified').optional(),
-
-    photos: z.array(z.string(), {
-      error: 'Photos array is required',
-    }).min(1, { message: 'At least one photo path or URL is required' }).optional(),
-
-    rent: z.number({
-      error: 'Rent amount is required',
-    }).positive({ message: 'Rent must be a positive number' }),
-
-    serviceCharge: z.number().positive().optional().nullable(),
-
-    waterBill: WaterBillEnum.default('Optional').optional(),
+    address: roomFields.address,
+    area: roomFields.area,
+    types: roomFields.types,
+    description: roomFields.description,
+    neighborhood: roomFields.neighborhood,
+    photos: roomFields.photos.optional(),
   }),
 });
-
 
 const updateRoomListingValidationSchema = z.object({
-  body: z.object({
-    address: z.string().min(3).optional(),
-    availableFrom: z.string().refine((val) => !isNaN(Date.parse(val))).optional(),
-    category: PropertyCategoryEnum.optional(),
-    contactNumber: z.string().min(10).optional(),
-    description: z.string().min(10).optional(),
-    gasSupply: GasSupplyEnum.optional().nullable(),
-    location: z.string().optional(),
-    parkingSpace: ParkingSpaceEnum.optional(),
-    photos: z.array(z.string()).min(1).optional(),
-    rent: z.number().positive().optional(),
-    serviceCharge: z.number().positive().optional().nullable(),
-    waterBill: WaterBillEnum.optional(),
+  params: z.object({ id: objectIdSchema }),
+  body: z
+    .object({
+      address: roomFields.address.optional(),
+      area: roomFields.area.optional(),
+      types: roomFields.types.optional(),
+      description: roomFields.description.optional(),
+      neighborhood: roomFields.neighborhood.optional(),
+      photos: roomFields.photos.optional(),
+    })
+    .refine((body) => Object.keys(body).length > 0, {
+      message: "At least one field must be provided",
+    }),
+});
+
+const roomIdParamsValidationSchema = z.object({
+  params: z.object({ id: objectIdSchema }),
+});
+
+const listRoomQueryValidationSchema = z.object({
+  query: z.object({
+    search: z.string().trim().max(200).optional(),
+    area: z.string().trim().max(200).optional(),
+    types: propertyCategorySchema.optional(),
+    neighborhood: z.string().trim().max(200).optional(),
+    page: z.coerce.number().int().min(1).optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    address: z.string().optional(),
+    description: z.string().optional()
   }),
 });
+
+const viewCountSchema = z.object({
+  body: z.object({
+
+    ipAddress: z.string().optional(),
+    roomId: z.string({ error: "roomId is required" })
+
+  })
+})
 
 export const ListRoomValidation = {
   createRoomListingValidationSchema,
   updateRoomListingValidationSchema,
+  roomIdParamsValidationSchema,
+  listRoomQueryValidationSchema,
+  viewCountSchema
 };

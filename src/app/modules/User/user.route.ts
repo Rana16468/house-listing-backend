@@ -58,6 +58,10 @@ router.get('/my-profile',
     auth(Role.ADMIN, Role.USER),
     UserController.findMyProfile
 );
+router.get('/avater',
+    auth(Role.ADMIN, Role.USER),
+    UserController.avater
+);
 
 
 const UserRoutes = router;

@@ -4,6 +4,7 @@ import app from "./app";
 import { connectRedis, disconnectRedis, isRedisAlive } from "./app/redis/redis";
 import { logger } from "./app/redis/logger";
 import config from "./app/config";
+import { connectSocket } from "./socket/connectSocket";
 
 let server: Server;
 
@@ -14,6 +15,8 @@ async function main() {
 
     server = app.listen(Number(config.port), "0.0.0.0", () => {
       console.log(`🚀 Server running on http://${config.host}:${config.port}`);
+
+       connectSocket(server);
 
       // Small delay to ensure async ioredis connection state updates properly
       setTimeout(() => {

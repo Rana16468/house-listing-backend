@@ -3,28 +3,23 @@ import { z } from 'zod';
 
 const createUserZodSchema = z.object({
   body: z.object({
-    name: z
-      .string({
-        error: 'Name is required',
-      })
-      .min(1, 'Name cannot be empty'),
+    name: z.string().min(1, 'Name cannot be empty').optional(),
 
-    // phone: z
-    //   .string({
-    //     error: 'Phone number is required',
-    //   })
-    //   .min(10, 'Phone number must be at least 10 digits'),
+    phone: z
+      .string({
+        error:
+          'Phone number is required. Account creation is not allowed without a phone number.',
+      })
+      .min(10, 'Phone number must be at least 10 digits')
+      .optional()
+      .or(z.literal('')),
 
     password: z
       .string()
       .min(6, 'Password must be at least 6 characters')
       .optional(),
 
-    email: z
-      .string()
-      .email('Invalid email address')
-      .optional()
-      .or(z.literal('')),
+    email: z.string().email('Invalid email address'),
 
     status: z.nativeEnum(Status).default(Status.ACTIVE),
     role: z.nativeEnum(Role).default(Role.USER),
@@ -32,8 +27,6 @@ const createUserZodSchema = z.object({
     os: z.string().optional(),
     browser: z.string().optional(),
     device: z.string().optional(),
-    ipAddress: z.string().optional(),
-
     isOnline: z.boolean().default(true),
     isVerify: z.boolean().default(false),
     photo: z.string().optional(),
@@ -51,7 +44,8 @@ const createAdminAccountZodSchema = z.object({
 
     phone: z
       .string({
-        error: 'Phone number is required',
+        error:
+          'Phone number is required. Account creation is not allowed without a phone number.',
       })
       .min(10, 'Phone number must be at least 10 digits'),
 
