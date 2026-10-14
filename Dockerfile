@@ -19,5 +19,5 @@ RUN npm run build
 # পোর্ট এক্সপোজ
 EXPOSE 5000
 
-# প্রোডাকশন মোডে সার্ভার স্টার্ট করা (package.json-এর start স্ক্রিপ্ট অনুযায়ী)
-CMD ["npm", "start"]
+# Start the compiled server directly so it receives container signals.
+CMD ["node", "dist/server.js"]
