@@ -37,8 +37,10 @@ app.use("/api/v1/monitor", monitorRouter);
 app.get("/", (req: Request, res: Response) => {
   res.send(systemArtc());
 });
-cron.schedule("*/30 * * * *", async () => {
-  await autoDeleteAvailableFrom();
+cron.schedule("*/30 * * * *", () => {
+  void autoDeleteAvailableFrom().catch((error) => {
+    console.error("Scheduled available-from cleanup failed", error);
+  });
 });
 app.use(globalErrorHandler);
 
