@@ -2,23 +2,22 @@ FROM node:22-alpine
 
 WORKDIR /app
 
-# Package files কপি করা
+# প্যাকেজ ফাইল কপি ও ইন্সটল
 COPY package*.json ./
-
-# Prisma থাকলে Prisma Schema কপি করা
 COPY prisma ./prisma/
-
-# DevDependencies সহ সব Packages ইন্সটল করা
 RUN npm install
 
-# Prisma Client জেনারেট করা (যদি Prisma ব্যবহার করেন)
+# Prisma জেনারেট করা
 RUN npx prisma generate
 
-# প্রজেক্ট ফাইল কপি করা
+# বাকি সব ফাইল কপি করা
 COPY . .
 
-# Port Expose করা
+# প্রজেক্ট বিল্ড করা (যদি টাইপস্ক্রিপ্ট প্রোডাকশনে বিল্ড করতে হয়)
+RUN npm run build
+
+# পোর্ট এক্সপোজ
 EXPOSE 5000
 
-# Docker-এ ডেভেলপমেন্ট মোডে রান করার কমান্ড
-CMD ["npm", "run", "dev"]
+# প্রোডাকশন মোডে সার্ভার স্টার্ট করা (package.json-এর start স্ক্রিপ্ট অনুযায়ী)
+CMD ["npm", "start"]
