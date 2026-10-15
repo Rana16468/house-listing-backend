@@ -19,5 +19,5 @@ export interface TUser {
 export type TJwtPayload = {
   id: string;
   role: string;
-  email: string;
+  email?: string;
 };

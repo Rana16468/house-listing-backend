@@ -12,6 +12,7 @@ const createReportRoomSchema = z.object({
       "Misleading_Photos",
       "Scam_OR_Spam",
     ]),
+    ipAddress: z.string().optional()
   }),
 });
 

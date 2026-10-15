@@ -23,19 +23,18 @@ const createUserIntoDb = async (
             "JWT Secret keys are not defined in the configuration"
         );
     }
-    
 
     // Dynamic IP fetch using the passed clientIpAddress (fallback to empty if local/invalid)
     let cityData = null;
     try {
-        const ipToCheck =  payload.ipAddress ? payload.ipAddress  : clientIpAddress || '';
+        const ipToCheck = payload.ipAddress ? payload.ipAddress : clientIpAddress || '';
         
         console.log("Client IP Address for GeoIP lookup:", ipToCheck);
         const ipApiUrl = ipToCheck ? `http://ip-api.com/json/${ipToCheck}` : `http://ip-api.com/json/`;
         const response = await fetch(ipApiUrl);
         const data = await response.json();
        
-            cityData = data.city || null;
+        cityData = data.city || null;
         
     } catch (error) {
         console.error("Failed to fetch IP geolocation:", error);
@@ -52,7 +51,7 @@ const createUserIntoDb = async (
                 isDeleted: true,
                 phone: true,
             },
-        });
+        }); 
 
         if (existingUser) {
             if (existingUser.isDeleted) {
@@ -69,21 +68,22 @@ const createUserIntoDb = async (
                 );
             }
 
+            // Fixed: Throw an AppError instead of returning an untyped object
             if (!existingUser.phone) {
                 throw new AppError(
-                    httpStatus.FORBIDDEN,
-                    "This account does not have a phone number associated with it."
+                    httpStatus.BAD_REQUEST,
+                    "Phone number is required. Account creation is not allowed without a phone number."
                 );
             }
 
-            // If account exists, update user's current session/location info (OS, Browser, Device, IP, City, etc.)
+            // If account exists, update user's current session/location info
             const updatedUser = await tx.user.update({
                 where: { id: existingUser.id },
                 data: {
                     os: payload.os,
                     browser: payload.browser,
                     device: payload.device,
-                    ipAddress:payload.ipAddress?payload.ipAddress:clientIpAddress,
+                    ipAddress: payload.ipAddress ? payload.ipAddress : clientIpAddress,
                     city: cityData,
                     isOnline: payload.isOnline ?? true,
                 },
@@ -118,7 +118,7 @@ const createUserIntoDb = async (
                 os: payload.os,
                 browser: payload.browser,
                 device: payload.device,
-                ipAddress: payload.ipAddress?payload.ipAddress:clientIpAddress,
+                ipAddress: payload.ipAddress ? payload.ipAddress : clientIpAddress,
                 isOnline: payload.isOnline ?? true,
                 isVerify: true,
                 status: Status.ACTIVE,
@@ -139,20 +139,20 @@ const createUserIntoDb = async (
         await invalidateCacheDomains("users", "rooms", "saved-rooms");
     }
 
-    const jwtPayload = {
+    const jwtPayload: TJwtPayload = {
         id: user.id,
         role: user.role,
-        email: user.email,
+        email: user.email??"",
     };
 
     const accessToken = jwtHelpers.generateToken(
-        jwtPayload as TJwtPayload,
+        jwtPayload,
         config.jwt_access_secret,
         config.expires_in as string
     );
 
     const refreshToken = jwtHelpers.generateToken(
-        jwtPayload as TJwtPayload,
+        jwtPayload,
         config.jwt_refresh_secret,
         config.refresh_expires_in as string
     );

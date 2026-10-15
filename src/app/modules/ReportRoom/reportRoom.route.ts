@@ -9,7 +9,6 @@ const router = express.Router();
 
 router.post(
   "/",
-  auth(Role.USER),
   validationRequest(ReportRoomValidation.createReportRoomSchema),
   ReportRoomController.createReportRoom,
 );

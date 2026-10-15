@@ -138,7 +138,7 @@ model User {
   updatedAt   DateTime     @updatedAt
   rooms       ListRoom[]
   saveRoom    SaveRoom[]
-  reportRooms reportRoom[]
+  
 
   @@index([phone, email, status, os, browser, device, isDeleted, isVerify, createdAt])
   @@index([role, city])
@@ -180,13 +180,13 @@ enum ReportType {
 
 model reportRoom {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId    String   @db.ObjectId
+  ipAddress  String?
   roomId    String   @db.ObjectId
   reportType  ReportType 
   isDeleted  Boolean  @default(false)
   listRooms ListRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
+  
+  @@index([ipAddress, roomId])
   @@map("report_rooms")
 }
 

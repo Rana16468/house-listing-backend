@@ -158,13 +158,13 @@ const findByAllListIntoDb = async (queryParams: QueryParams) => {
             description: true,
             neighborhood: true,
             photos: true,
-            viewCount:true,
+            viewCount: true,
             createdAt: true,
-            user:{
-              select:{
-                name: true ,
+            user: {
+              select: {
+                name: true,
                 phone: true
-                 
+
 
               }
             }
@@ -205,7 +205,7 @@ const findBySpecificRoomListIntoDb = async (id: string) => {
             types: true,
             description: true,
             neighborhood: true,
-            viewCount:true,
+            viewCount: true,
             photos: true,
             createdAt: true,
             updatedAt: true
@@ -316,6 +316,19 @@ const deleteListRoomIntoDb = async (
         data: { isDeleted: true },
       }),
     ]);
+    prisma.roomView.deleteMany({
+      where: {
+        roomId: id,
+        isDeleted: false
+      }
+    });
+    prisma.reportRoom.deleteMany({
+      where: {
+        roomId: id,
+        isDeleted: false
+      }
+    })
+
     await invalidateCacheDomains("rooms", "saved-rooms");
 
     await Promise.all(
@@ -352,7 +365,7 @@ const findMyHouseListingsIntoDb = async (
               description: true,
               neighborhood: true,
               photos: true,
-              viewCount:true,
+              viewCount: true,
               createdAt: true,
               updatedAt: true,
             },

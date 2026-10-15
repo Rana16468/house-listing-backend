@@ -6,9 +6,10 @@ import ReportRoomService from "./reportRoom.services";
 
 const createReportRoom: RequestHandler = catchAsync(async (req, res) => {
   const result = await ReportRoomService.createReportRoomIntoDb(
-    req.user.id,
+    
     req.body.roomId,
     req.body.reportType,
+    req.body.ipAddress
   );
 
   sendResponse(res, {

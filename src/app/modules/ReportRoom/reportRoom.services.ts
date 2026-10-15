@@ -14,9 +14,9 @@ interface ReportRoomQuery {
 }
 
 const createReportRoomIntoDb = async (
-  userId: string,
   roomId: string,
   reportType: ReportType,
+  ipAddress: string
 ) => {
   try {
 
@@ -28,7 +28,7 @@ const createReportRoomIntoDb = async (
       prisma.reportRoom.findFirst({
         where: {
           roomId,
-          userId,
+          ipAddress,
           isDeleted: false, // আপনার স্কিমার ফিল্ড অনুযায়ী 'sDeleted' ব্যবহার করা হয়েছে
         },
         select: { id: true },
@@ -50,7 +50,7 @@ const createReportRoomIntoDb = async (
 
     const report = await prisma.reportRoom.create({
       data: {
-        userId,
+        ipAddress,
         roomId,
         reportType
 
@@ -94,8 +94,8 @@ const findReportRoomsIntoDb = async (query: ReportRoomQuery) => {
           select: {
             id: true,
             roomId: true,
-            userId: true,
             reportType: true,
+            ipAddress: true,
             listRooms: {
               select: {
                 id: true,
@@ -104,15 +104,7 @@ const findReportRoomsIntoDb = async (query: ReportRoomQuery) => {
                 types: true,
                 neighborhood: true,
               },
-            },
-            user: {
-              select: {
-                id: true,
-                name: true,
-                phone: true,
-                photo: true,
-              },
-            },
+            }
           },
           skip,
           take: limit,

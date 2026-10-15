@@ -30,10 +30,7 @@ const createUser: RequestHandler = catchAsync(async (req, res) => {
         success: true,
         statusCode: httpStatus.OK,
         message: "Successfully Login",
-        data: {
-            accessToken,
-            refreshToken,
-        }
+        data: result
     });
 });
 
