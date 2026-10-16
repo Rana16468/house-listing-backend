@@ -21,6 +21,7 @@ interface RoomQueryFilters {
   limit?: string | number;
   description?: string
   address?: string
+  id?: string
 }
 
 const pageOptions = (query: QueryParams) => {
@@ -40,6 +41,10 @@ const roomWhere = (
   userId?: string,
 ): Prisma.ListRoomWhereInput => {
   const conditions: Prisma.ListRoomWhereInput[] = [{ isDeleted: false }];
+  
+  if (query.id?.trim()) {
+    conditions.push({ id: query.id.trim() });
+  }
 
   if (query.search?.trim()) {
     const search = query.search.trim();
@@ -139,6 +144,7 @@ const createRoomListingIntoDb = async (
 
 const findByAllListIntoDb = async (queryParams: QueryParams) => {
   const filters = queryParams as RoomQueryFilters;
+  console.log(filters)
   const { page, limit, skip } = pageOptions(queryParams);
   const where = roomWhere(filters);
 
@@ -366,6 +372,7 @@ const findMyHouseListingsIntoDb = async (
               neighborhood: true,
               photos: true,
               viewCount: true,
+              reportCount: true,
               createdAt: true,
               updatedAt: true,
             },
@@ -392,6 +399,8 @@ const findMyHouseListingsIntoDb = async (
   }
 };
 
+
+
 const viewCountIntoDb = async (payload: { roomId: string; ipAddress: string }) => {
   try {
     const { roomId, ipAddress } = payload;
@@ -415,12 +424,7 @@ const viewCountIntoDb = async (payload: { roomId: string; ipAddress: string }) =
 
     // ৩. নতুন ইউনিক আইপি হলে ডাটাবেজে রেকর্ড সেভ করা এবং মূল রুমের ভিউ ১ বাড়ানো
     const result = await prisma.$transaction([
-      prisma.roomView.create({
-        data: {
-          roomId: roomId,
-          ipAddress: ipAddress,
-        },
-      }),
+
       prisma.listRoom.update({
         where: { id: roomId },
         data: {

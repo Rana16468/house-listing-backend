@@ -75,18 +75,18 @@ type ContactInfo {
 }
 
 model Post {
-  id              String         @id @default(auto()) @map("_id") @db.ObjectId
+  id              String           @id @default(auto()) @map("_id") @db.ObjectId
   title           String
   description     String
   category        RentalCategory
   tenantType      TenantType
-  parking         ParkingType    @default(none)
+  parking         ParkingType      @default(none)
   address         String?
   liveLocationUrl String?
   images          String[]
   availableFrom   String
   pin             String
-  source          String         @default("user")
+  source          String           @default("user")
   deviceId        String
   // Embedded Structured Fields
   location        Location
@@ -96,9 +96,9 @@ model Post {
   browser         String?
   device          String?
   ipAddress       String?
-  isDelete        Boolean        @default(false)
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  isDelete        Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   @@index([category, tenantType, os, device, browser, deviceId])
   @@index([location.division, location.district, location.thana, contact.phone, utilities.baseRent, availableFrom])
@@ -119,26 +119,25 @@ enum Status {
 }
 
 model User {
-  id          String       @id @default(auto()) @map("_id") @db.ObjectId
-  name        String
-  phone       String?
-  city        String?
-  email       String?
-  photo       String?
-  status      Status       @default(ACTIVE)
-  role        Role         @default(USER)
-  os          String?
-  browser     String?
-  device      String?
-  ipAddress   String?
-  isOnline    Boolean      @default(false)
-  isVerify    Boolean      @default(false)
-  isDeleted   Boolean      @default(false)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  rooms       ListRoom[]
-  saveRoom    SaveRoom[]
-  
+  id        String     @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  phone     String?
+  city      String?
+  email     String?
+  photo     String?
+  status    Status     @default(ACTIVE)
+  role      Role       @default(USER)
+  os        String?
+  browser   String?
+  device    String?
+  ipAddress String?
+  isOnline  Boolean    @default(false)
+  isVerify  Boolean    @default(false)
+  isDeleted Boolean    @default(false)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  rooms     ListRoom[]
+  saveRoom  SaveRoom[]
 
   @@index([phone, email, status, os, browser, device, isDeleted, isVerify, createdAt])
   @@index([role, city])
@@ -179,13 +178,13 @@ enum ReportType {
 }
 
 model reportRoom {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  id         String     @id @default(auto()) @map("_id") @db.ObjectId
   ipAddress  String?
-  roomId    String   @db.ObjectId
-  reportType  ReportType 
-  isDeleted  Boolean  @default(false)
-  listRooms ListRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  
+  roomId     String     @db.ObjectId
+  reportType ReportType
+  isDeleted  Boolean    @default(false)
+  listRooms  ListRoom   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
   @@index([ipAddress, roomId])
   @@map("report_rooms")
 }
@@ -198,6 +197,7 @@ model ListRoom {
   description  String
   neighborhood String
   viewCount    Int?             @default(0)
+  reportCount  Int?             @default(0)
   photos       String[]         @default([])
   userId       String           @db.ObjectId
   isDeleted    Boolean          @default(false)
@@ -206,7 +206,7 @@ model ListRoom {
   user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   roomViews    RoomView[]
   reportRooms  reportRoom[]
-  savedBy      SaveRoom[]      
+  savedBy      SaveRoom[]
 
   @@index([userId, types, neighborhood, area])
   @@index([createdAt(sort: Desc)])

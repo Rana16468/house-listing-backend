@@ -19,7 +19,7 @@ const createReportRoomIntoDb = async (
   ipAddress: string
 ) => {
   try {
-
+    // ১. রুম ভ্যালিডেশন এবং আগের রিপোর্ট চেক একসাথে প্যারালালি রান করা (ডাটাবেজ রাউন্ড-ট্রিপ কমাতে)
     const [room, existingReport] = await Promise.all([
       prisma.listRoom.findUnique({
         where: { id: roomId },
@@ -29,18 +29,18 @@ const createReportRoomIntoDb = async (
         where: {
           roomId,
           ipAddress,
-          isDeleted: false, // আপনার স্কিমার ফিল্ড অনুযায়ী 'sDeleted' ব্যবহার করা হয়েছে
+          isDeleted: false,
         },
         select: { id: true },
       }),
     ]);
 
-
+    // ২. রুম না থাকলে বা ডিলিট হয়ে গেলে দ্রুত থ্রো করা
     if (!room || room.isDeleted) {
       throw new AppError(status.NOT_FOUND, "Room listing not found.");
     }
 
-
+    // ৩. ডুপ্লিকেট রিপোর্ট চেক
     if (existingReport) {
       return {
         success: false,
@@ -48,15 +48,29 @@ const createReportRoomIntoDb = async (
       };
     }
 
-    const report = await prisma.reportRoom.create({
-      data: {
-        ipAddress,
-        roomId,
-        reportType
+    // ৪. ট্রানজ্যাকশন ব্যবহার করে এক সাথে রিপোর্ট ক্রিয়েট এবং কাউন্ট আপডেট করা
+    const report = await prisma.$transaction(async (tx) => {
+      
+      await tx.listRoom.update({
+        where: { id: roomId },
+        data: {
+          reportCount: {
+            increment: 1,
+          },
+        },
+      });
 
-      },
+      
+      return await tx.reportRoom.create({
+        data: {
+          ipAddress,
+          roomId,
+          reportType,
+        },
+      });
     });
 
+    
     invalidateCacheDomains("report-rooms").catch((err) => {
       console.error("Cache invalidation failed:", err);
     });
