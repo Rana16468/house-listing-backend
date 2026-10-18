@@ -56,6 +56,7 @@ const autoDeleteAvailableFrom = async () => {
 
 
       await Promise.allSettled(
+        
         expiredPosts.map((post) => safeDeleteCloudinaryImages(post.images))
       );
 

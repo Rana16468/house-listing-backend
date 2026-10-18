@@ -8,6 +8,7 @@ import cookieParser from "cookie-parser";
 import monitorRouter, { recordRequestMetrics } from "./app/utils/metrics/metricsMiddleware";
 import systemArtc from "./app/utils/metrics/systemArtc";
 import autoDeleteAvailableFrom from "./app/utils/autoDeleteavailableFrom";
+import autoDeleteRoomList from "./app/utils/metrics/autoDeleteRoomList";
 
 const app: Application = express();
 
@@ -32,7 +33,7 @@ app.use(recordRequestMetrics);
 
 // router setup
 app.use("/api/v1", router);
-app.use("/api/v1/monitor", monitorRouter); 
+app.use("/api/v1/monitor", monitorRouter);
 
 app.get("/", (req: Request, res: Response) => {
   res.send(systemArtc());
@@ -42,6 +43,12 @@ cron.schedule("*/30 * * * *", () => {
     console.error("Scheduled available-from cleanup failed", error);
   });
 });
+cron.schedule("*/30 * * * *", async () => {
+
+
+  await autoDeleteRoomList()
+
+})
 app.use(globalErrorHandler);
 
 app.use(notFound);
