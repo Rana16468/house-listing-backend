@@ -165,6 +165,7 @@ const findByAllListIntoDb = async (queryParams: QueryParams) => {
             neighborhood: true,
             photos: true,
             viewCount: true,
+            reportCount:true,
             createdAt: true,
             user: {
               select: {
