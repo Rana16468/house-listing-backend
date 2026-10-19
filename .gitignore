@@ -1,6 +1,5 @@
 node_modules
 dist
-.env
 /generated/prisma
 branch_structure.json
 temp_auto_push.bat
@@ -8,4 +7,4 @@ temp_interactive_push.bat
 .gitignore
 
 .vercel
-.env*
+config.bat

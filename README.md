@@ -1,5 +1,59 @@
 
-
+## Backend API Service (Node.js, Express & MongoDB)
+ 
+- **Live API:** https://house-listing-backend-3i16.onrender.com
+- **GitHub Repository:** https://github.com/Rana16468/house-listing-backend
+> The backend runs on Render's free tier, so the first request may take a few seconds to wake up.
+ 
+### Run the backend locally (optional)
+ 
+```bash
+git clone https://github.com/Rana16468/house-listing-backend
+cd house-listing-backend
+npm install
+npm run dev
+```
+ 
+### Backend environment variables
+ 
+Create a `.env` file in the backend root (use `.env.example` as a reference):
+ 
+```env
+PORT=5000
+NODE_ENV=production
+DATABASE_URL=your_mongodb_connection_string
+DIRECT_URL=your_mongodb_connection_string
+BCRYPT_SALT_ROUNDS=12
+JWT_ACCESS_SECRET=your_jwt_access_secret
+EXPIRES_IN=10d
+JWT_REFRESH_SECRET=your_jwt_refresh_secret
+REFRESH_EXPIRES_IN=30d
+CLOUDINARY_NAME=your_cloudinary_name
+CLOUDINARY_API_KEY=your_cloudinary_api_key
+CLOUDINARY_API_SECRET=your_cloudinary_api_secret
+NODEMAILER_EMAIL=your_email@domain.com
+NODEMAILER_PASSWORD=your_email_password
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+REDIS_PASSWORD=your_redis_password
+REDIS_URL=redis://localhost:6379
+HOUSE_LISTING=5
+```
+ 
+| Variable | Description |
+| --- | --- |
+| `PORT` | Port the server listens on |
+| `NODE_ENV` | Environment mode (`development` or `production`) |
+| `DATABASE_URL` / `DIRECT_URL` | MongoDB connection string |
+| `BCRYPT_SALT_ROUNDS` | Salt rounds used for password hashing |
+| `JWT_ACCESS_SECRET` / `EXPIRES_IN` | Access token secret and its lifetime |
+| `JWT_REFRESH_SECRET` / `REFRESH_EXPIRES_IN` | Refresh token secret and its lifetime |
+| `CLOUDINARY_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | Cloudinary credentials for image uploads |
+| `NODEMAILER_EMAIL` / `NODEMAILER_PASSWORD` | Email account used to send emails |
+| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` / `REDIS_URL` | Redis connection settings |
+| `HOUSE_LISTING` | House listing limit setting |
+ 
+> **Note:** Never commit real secrets. Keep `.env` in `.gitignore` and only share `.env.example` with placeholder values.
 
 # 🏠 Room Rental Platform – Backend
 
